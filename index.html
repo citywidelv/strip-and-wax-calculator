@@ -250,11 +250,87 @@
             margin-top: 15px;
         }
         
-        .material-item {
-            background: #f8f9fa;
+        .toggle-section {
+            grid-column: 1 / -1;
+            background: #F3F4F6;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-left: 4px solid #059669;
+        }
+        
+        .toggle-section h2 {
+            color: #059669;
+            margin-bottom: 20px;
+            font-size: 1.4em;
+            border-bottom: 2px solid #059669;
+            padding-bottom: 10px;
+        }
+        
+        .toggle-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .toggle-item {
+            background: white;
             padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #dee2e6;
+            transition: border-color 0.3s ease;
+        }
+        
+        .toggle-item.vendor {
+            border-color: #DC2626;
+            background: #FEF2F2;
+        }
+        
+        .toggle-item.inhouse {
+            border-color: #059669;
+            background: #F0FDF4;
+        }
+        
+        .toggle-item h4 {
+            margin-bottom: 10px;
+            color: #374151;
+            font-size: 1.1em;
+        }
+        
+        .toggle-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .toggle-btn {
+            flex: 1;
+            padding: 8px 12px;
+            border: 2px solid #dee2e6;
+            background: white;
             border-radius: 6px;
-            border-left: 3px solid #28a745;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        
+        .toggle-btn.active.vendor {
+            background: #DC2626;
+            color: white;
+            border-color: #DC2626;
+        }
+        
+        .toggle-btn.active.inhouse {
+            background: #059669;
+            color: white;
+            border-color: #059669;
+        }
+        
+        .toggle-description {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
         }
         
         @media (max-width: 768px) {
@@ -280,6 +356,64 @@
         </div>
         
         <div class="main-content">
+            <!-- Cost Provider Toggle Section -->
+            <div class="toggle-section">
+                <h2>Cost Provider Selection</h2>
+                <div class="toggle-grid">
+                    <div class="toggle-item vendor" id="laborToggle">
+                        <h4>Labor</h4>
+                        <div class="toggle-buttons">
+                            <button class="toggle-btn active vendor" onclick="setProvider('labor', 'vendor')">Vendor</button>
+                            <button class="toggle-btn" onclick="setProvider('labor', 'inhouse')">In-House</button>
+                        </div>
+                        <div class="toggle-description">Vendor: +10% profit then CW margin | In-House: CW loaded rate + margin</div>
+                    </div>
+                    
+                    <div class="toggle-item vendor" id="stripperToggle">
+                        <h4>Stripper</h4>
+                        <div class="toggle-buttons">
+                            <button class="toggle-btn active vendor" onclick="setProvider('stripper', 'vendor')">Vendor</button>
+                            <button class="toggle-btn" onclick="setProvider('stripper', 'inhouse')">In-House</button>
+                        </div>
+                        <div class="toggle-description">Material cost + provider markup structure</div>
+                    </div>
+                    
+                    <div class="toggle-item vendor" id="finishToggle">
+                        <h4>Floor Finish</h4>
+                        <div class="toggle-buttons">
+                            <button class="toggle-btn active vendor" onclick="setProvider('finish', 'vendor')">Vendor</button>
+                            <button class="toggle-btn" onclick="setProvider('finish', 'inhouse')">In-House</button>
+                        </div>
+                        <div class="toggle-description">Material cost + provider markup structure</div>
+                    </div>
+                    
+                    <div class="toggle-item vendor" id="padsToggle">
+                        <h4>Pads & Supplies</h4>
+                        <div class="toggle-buttons">
+                            <button class="toggle-btn active vendor" onclick="setProvider('pads', 'vendor')">Vendor</button>
+                            <button class="toggle-btn" onclick="setProvider('pads', 'inhouse')">In-House</button>
+                        </div>
+                        <div class="toggle-description">Consumable supplies cost + provider markup</div>
+                    </div>
+                    
+                    <div class="toggle-item vendor" id="equipmentToggle">
+                        <h4>Equipment</h4>
+                        <div class="toggle-buttons">
+                            <button class="toggle-btn active vendor" onclick="setProvider('equipment', 'vendor')">Vendor</button>
+                            <button class="toggle-btn" onclick="setProvider('equipment', 'inhouse')">In-House</button>
+                        </div>
+                        <div class="toggle-description">Equipment rental/depreciation + provider markup</div>
+                    </div>
+                </div>
+                
+                <div class="cost-structure-note">
+                    <h4>Cost Structure Logic:</h4>
+                    <p><strong>Vendor Provided:</strong> Raw Cost + 10% IC Profit/OH → Total × (1 ÷ (1 - CW Margin%))</p>
+                    <p><strong>In-House Provided:</strong> Raw Cost (no 10% IC profit) → Total × (1 ÷ (1 - CW Margin%))</p>
+                    <p><strong>Labor Exception:</strong> If In-House, use CW loaded rate (includes FICA, FUTA, etc.) but no 10% IC profit</p>
+                </div>
+            </div>
+            
             <!-- Project Details Section -->
             <div class="section">
                 <h2>Project Details</h2>
@@ -538,6 +672,37 @@
     </div>
 
     <script>
+        // Cost provider tracking
+        const costProviders = {
+            labor: 'vendor',
+            stripper: 'vendor', 
+            finish: 'vendor',
+            pads: 'vendor',
+            equipment: 'vendor'
+        };
+        
+        function setProvider(item, provider) {
+            costProviders[item] = provider;
+            
+            // Update UI
+            const toggleItem = document.getElementById(item + 'Toggle');
+            const buttons = toggleItem.querySelectorAll('.toggle-btn');
+            
+            // Remove active class from all buttons
+            buttons.forEach(btn => btn.classList.remove('active', 'vendor', 'inhouse'));
+            
+            // Add active class to selected button
+            const activeButton = provider === 'vendor' ? buttons[0] : buttons[1];
+            activeButton.classList.add('active', provider);
+            
+            // Update container styling
+            toggleItem.classList.remove('vendor', 'inhouse');
+            toggleItem.classList.add(provider);
+            
+            // Recalculate pricing
+            calculatePricing();
+        }
+        
         // Production rates for different service types
         const productionRates = {
             strip_refinish: {
@@ -621,6 +786,63 @@
                 `;
             }
             calculatePricing();
+        }
+        
+        function calculateInHouseLoadedRate(rawRate) {
+            // Calculate in-house loaded rate (all costs except IC profit)
+            const stateTaxRate = parseFloat(document.getElementById('stateTax').value) || 0;
+            
+            const fica = rawRate * 0.0765;
+            const futa = rawRate * 0.0060;
+            const workComp = rawRate * 0.0250;
+            const gl = rawRate * 0.0050;
+            const stateTax = rawRate * (stateTaxRate / 100);
+            
+            return rawRate + fica + futa + workComp + gl + stateTax;
+        }
+        
+        function calculateMaterialCosts(stripperCost, finishCost, padsCost, suppliesCost, cwMargin) {
+            let stripperTotal, finishTotal, padsTotal;
+            
+            // Stripper cost
+            if (costProviders.stripper === 'vendor') {
+                const stripperWithICProfit = stripperCost * 1.10;
+                stripperTotal = stripperWithICProfit / (1 - cwMargin/100);
+            } else {
+                stripperTotal = stripperCost / (1 - cwMargin/100);
+            }
+            
+            // Finish cost  
+            if (costProviders.finish === 'vendor') {
+                const finishWithICProfit = finishCost * 1.10;
+                finishTotal = finishWithICProfit / (1 - cwMargin/100);
+            } else {
+                finishTotal = finishCost / (1 - cwMargin/100);
+            }
+            
+            // Pads and supplies cost
+            if (costProviders.pads === 'vendor') {
+                const padsWithICProfit = (padsCost + suppliesCost) * 1.10;
+                padsTotal = padsWithICProfit / (1 - cwMargin/100);
+            } else {
+                padsTotal = (padsCost + suppliesCost) / (1 - cwMargin/100);
+            }
+            
+            return {
+                stripper: stripperTotal,
+                finish: finishTotal,
+                pads: padsTotal,
+                total: stripperTotal + finishTotal + padsTotal
+            };
+        }
+        
+        function calculateBaseCosts(totalHours, finalVendorRate, timeMultiplier, equipmentRate, stripperCost, finishCost, padsCost, suppliesCost) {
+            // Calculate base costs without any markups for profit calculation
+            const baseLaborCost = totalHours * finalVendorRate * timeMultiplier;
+            const baseEquipmentCost = totalHours * equipmentRate;
+            const baseMaterialCost = stripperCost + finishCost + padsCost + suppliesCost;
+            
+            return baseLaborCost + baseEquipmentCost + baseMaterialCost;
         }
         
         function updateICBreakdown() {
@@ -782,20 +1004,52 @@
                     finalVendorRate = icLoadedRate * crewSize;
                 }
                 
-                // Calculate costs
-                const vendorLaborCost = totalHours * finalVendorRate * timeMultiplier;
-                const equipmentCost = totalHours * equipmentRate;
-                const totalCostToCW = vendorLaborCost + equipmentCost + baseMaterialCost;
-                const finalClientPrice = totalCostToCW / (1 - cwMargin/100);
-                const cwGrossProfit = finalClientPrice - totalCostToCW;
+                // Calculate costs with provider-specific markup
+                let vendorLaborCost, equipmentCost, finalMaterialCosts;
+                
+                // Labor cost calculation
+                if (costProviders.labor === 'vendor') {
+                    // Vendor provides: IC rate with 10% profit, then CW margin
+                    const vendorLaborBase = totalHours * finalVendorRate * timeMultiplier;
+                    vendorLaborCost = vendorLaborBase / (1 - cwMargin/100);
+                } else {
+                    // In-house: Use loaded rate (no 10% IC profit) then CW margin
+                    const rawRate = parseFloat(document.getElementById('rawLaborRate').value) || 18;
+                    const inHouseRate = calculateInHouseLoadedRate(rawRate);
+                    let inHouseFinalRate = inHouseRate;
+                    if (crewSize > 1) {
+                        inHouseFinalRate = inHouseRate * crewSize;
+                    }
+                    const inHouseLaborBase = totalHours * inHouseFinalRate * timeMultiplier;
+                    vendorLaborCost = inHouseLaborBase / (1 - cwMargin/100);
+                }
+                
+                // Equipment cost calculation
+                if (costProviders.equipment === 'vendor') {
+                    // Vendor provides: Base cost + 10% IC profit, then CW margin
+                    const equipmentBase = totalHours * equipmentRate;
+                    const equipmentWithICProfit = equipmentBase * 1.10;
+                    equipmentCost = equipmentWithICProfit / (1 - cwMargin/100);
+                } else {
+                    // In-house: Base cost, then CW margin (no 10% IC profit)
+                    const equipmentBase = totalHours * equipmentRate;
+                    equipmentCost = equipmentBase / (1 - cwMargin/100);
+                }
+                
+                // Material costs calculation
+                finalMaterialCosts = calculateMaterialCosts(stripperCost, finishCost, padsCost, suppliesCost, cwMargin);
+                
+                // Total costs (already include margins)
+                const totalCostToCW = vendorLaborCost + equipmentCost + finalMaterialCosts.total;
+                const finalClientPrice = totalCostToCW; // Already includes all markups
+                const cwGrossProfit = finalClientPrice - (calculateBaseCosts(totalHours, finalVendorRate, timeMultiplier, equipmentRate, stripperCost, finishCost, padsCost, suppliesCost));
                 const pricePerSqFt = finalClientPrice / squareFootage;
-                const materialCostWithMargin = baseMaterialCost / (1 - cwMargin/100);
                 
                 // Update display
                 document.getElementById('totalHours').textContent = totalHours.toFixed(1);
                 document.getElementById('vendorLaborCost').textContent = formatCurrency(vendorLaborCost);
                 document.getElementById('equipmentCost').textContent = formatCurrency(equipmentCost);
-                document.getElementById('materialCost').textContent = formatCurrency(materialCostWithMargin);
+                document.getElementById('materialCost').textContent = formatCurrency(finalMaterialCosts.total);
                 document.getElementById('totalCost').textContent = formatCurrency(totalCostToCW);
                 document.getElementById('pricePerSqFt').textContent = formatCurrencyDetailed(pricePerSqFt);
                 document.getElementById('bidPrice').textContent = formatCurrency(finalClientPrice);
@@ -821,8 +1075,8 @@
                     finishCost: finishCost,
                     padsCost: padsCost,
                     suppliesCost: suppliesCost,
-                    baseMaterialCost: baseMaterialCost,
-                    materialCostWithMargin: materialCostWithMargin,
+                    baseMaterialCost: stripperCost + finishCost + padsCost + suppliesCost,
+                    materialCostWithMargin: finalMaterialCosts.total,
                     vendorLaborCost: vendorLaborCost,
                     equipmentCost: equipmentCost,
                     totalCostToCW: totalCostToCW,
@@ -836,7 +1090,8 @@
                     furnitureDescription: furnitureDescription,
                     stripperCasePrice: parseFloat(document.getElementById('stripperCasePrice').value) || 90,
                     finishCasePrice: parseFloat(document.getElementById('finishCasePrice').value) || 140,
-                    coats: coats
+                    coats: coats,
+                    costProviders: costProviders
                 });
                 
             } catch (error) {
@@ -896,30 +1151,29 @@
                 
                 const materialHtml = `
                     <div class="material-item">
-                        <h4>Service Analysis</h4>
-                        <p>Service: ${fullServiceText}</p>
-                        <p>Finish Coats: ${data.coats}</p>
-                        <p>Crew Size: ${data.crewSize} person(s)</p>
-                        <p>${data.crewSize > 1 ? 'Faster completion, same cost/sq ft' : 'Standard single-person rate'}</p>
+                        <h4>Provider Structure</h4>
+                        <p><strong>Labor:</strong> ${data.costProviders.labor === 'vendor' ? 'Vendor (+10% IC profit)' : 'In-House (No IC profit)'}</p>
+                        <p><strong>Equipment:</strong> ${data.costProviders.equipment === 'vendor' ? 'Vendor (+10% IC profit)' : 'In-House (No IC profit)'}</p>
+                        <p><strong>Materials:</strong> ${data.costProviders.stripper === 'vendor' ? 'Vendor provided' : 'In-House provided'}</p>
                     </div>
                     <div class="material-item">
                         <h4>IC Rate Analysis</h4>
                         <p>Raw Rate: ${formatCurrencyDetailed(rawRate)}/hr</p>
-                        <p>Load Factor: ${((vendorRate / rawRate - 1) * 100).toFixed(0)}%</p>
-                        <p>IC Loaded Rate: ${formatCurrencyDetailed(vendorRate)}/hr</p>
+                        <p>Load Factor: ${data.costProviders.labor === 'vendor' ? ((vendorRate / rawRate - 1) * 100).toFixed(0) + '%' : 'In-House Rate'}</p>
+                        <p>Final Rate: ${formatCurrencyDetailed(vendorRate)}/hr</p>
                     </div>
                     <div class="material-item">
                         <h4>SC Johnson Stripper ${data.stripperGallons > 0 ? '' : '(Not Used)'}</h4>
+                        <p>Provider: ${data.costProviders.stripper === 'vendor' ? 'Vendor (+10%)' : 'City Wide Direct'}</p>
                         <p>Case Price: ${formatCurrency(data.stripperCasePrice)} (2 gal)</p>
                         <p>Per Gallon: ${formatCurrency(data.stripperCasePrice / 2)}</p>
-                        <p>Coverage: ~600 sq ft/gal (diluted)</p>
                         <p>Needed: ${data.stripperGallons} gallons</p>
                     </div>
                     <div class="material-item">
                         <h4>SC Johnson Floor Finish ${data.finishGallons > 0 ? '' : '(Not Used)'}</h4>
+                        <p>Provider: ${data.costProviders.finish === 'vendor' ? 'Vendor (+10%)' : 'City Wide Direct'}</p>
                         <p>Case Price: ${formatCurrency(data.finishCasePrice)} (5 gal)</p>
                         <p>Per Gallon: ${formatCurrency(data.finishCasePrice / 5)}</p>
-                        <p>Coverage: 3,000 sq ft/gal per coat</p>
                         <p>Needed: ${data.finishGallons} gallons</p>
                     </div>
                 `;
