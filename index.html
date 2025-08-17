@@ -669,6 +669,26 @@
             <h3 style="margin-top: 25px; color: #1E3A8A;">Material Calculator</h3>
             <div class="material-calc" id="materialCalc"></div>
         </div>
+        
+        <!-- Export Section -->
+        <div class="export-section">
+            <h2>Export Project Documentation</h2>
+            <p style="color: #666; margin-bottom: 20px;">Generate professional PDFs for vendors and clients with relevant project information</p>
+            
+            <div class="export-buttons">
+                <button class="export-btn vendor" onclick="generateVendorPDF()">
+                    📋 Generate Vendor Specifications
+                </button>
+                <button class="export-btn" onclick="generateClientPDF()">
+                    📄 Generate Client Instructions
+                </button>
+            </div>
+            
+            <div style="margin-top: 15px; font-size: 14px; color: #666;">
+                <p><strong>Vendor PDF:</strong> Material quantities, labor hours, equipment needs, project specifications</p>
+                <p><strong>Client PDF:</strong> Service overview, preparation requirements, curing instructions, care guidelines</p>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -1183,6 +1203,285 @@
             } catch (error) {
                 console.error('Error in generateDetailedBreakdown:', error);
             }
+        }
+        
+        function generateVendorPDF() {
+            const squareFootage = parseFloat(document.getElementById('squareFootage').value) || 0;
+            const serviceType = document.getElementById('serviceType').value;
+            const addBurnishing = document.getElementById('addBurnishing').checked;
+            const condition = document.getElementById('condition').value;
+            const density = document.getElementById('density').value;
+            const coats = parseInt(document.getElementById('coats').value) || 0;
+            const floorType = document.getElementById('floorType').value;
+            const crewSize = parseInt(document.getElementById('crewSize').value);
+            const timeOfService = document.getElementById('timeOfService').value;
+            
+            if (squareFootage <= 0) {
+                alert('Please enter project details before generating vendor specifications.');
+                return;
+            }
+            
+            // Get current calculations
+            const totalHours = parseFloat(document.getElementById('totalHours').textContent) || 0;
+            const materialCosts = getMaterialCosts();
+            const stripperGallons = serviceType === 'strip_refinish' ? Math.ceil(squareFootage / materialCoverage.stripper) : 0;
+            const finishGallons = Math.ceil((squareFootage * coats) / materialCoverage.finish);
+            const padsNeeded = Math.ceil(squareFootage / 2000);
+            
+            const serviceTypeText = serviceType === 'strip_refinish' ? 'Full Strip & Refinish' : 'Scrub & Top Coat';
+            const burnishingText = addBurnishing ? ' + High-Gloss Burnishing' : '';
+            const conditionText = condition.charAt(0).toUpperCase() + condition.slice(1).replace('_', ' ');
+            const densityText = density.charAt(0).toUpperCase() + density.slice(1).replace('_', ' ');
+            const floorTypeText = floorType.toUpperCase();
+            const timeText = timeOfService === 'third_shift' ? 'Third Shift (Midnight-6am)' : 'Normal Business Hours';
+            
+            const vendorContent = `
+VENDOR PROJECT SPECIFICATIONS
+Generated: ${new Date().toLocaleDateString()}
+
+PROJECT OVERVIEW
+================
+Service Type: ${serviceTypeText}${burnishingText}
+Total Square Footage: ${squareFootage.toLocaleString()} sq ft
+Floor Type: ${floorTypeText}
+Current Condition: ${conditionText}
+Furniture Density: ${densityText}
+Number of Finish Coats: ${coats}
+Work Schedule: ${timeText}
+
+LABOR REQUIREMENTS
+==================
+Estimated Total Hours: ${totalHours.toFixed(1)} hours
+Recommended Crew Size: ${crewSize} person(s)
+${crewSize > 1 ? `Team Completion Time: ${(totalHours).toFixed(1)} hours with ${crewSize} workers` : 'Single Worker Time: ' + totalHours.toFixed(1) + ' hours'}
+
+MATERIAL REQUIREMENTS
+=====================
+${stripperGallons > 0 ? `Floor Stripper: ${stripperGallons} gallons (concentrate)
+- Dilution ratio: 1:8 to 1:24 depending on buildup
+- Coverage: ~600 sq ft per gallon when diluted` : ''}
+
+Floor Finish: ${finishGallons} gallons (ready-to-use)
+- Coverage: 3,000 sq ft per gallon per coat
+- ${coats} coats required for this project
+
+Stripping Pads: ${padsNeeded} pads minimum
+- 20" black stripping pads recommended
+- Additional pads for heavy buildup areas
+
+Miscellaneous Supplies:
+- Tack cloths for dust removal
+- Mop heads (18" microfiber recommended)
+- Warning cones and caution tape
+- Drop cloths for furniture protection
+
+EQUIPMENT NEEDED
+================
+Primary Equipment:
+- 175 RPM floor machine (20" minimum)
+- Wet vacuum for stripper removal
+- Auto scrubber (if available, increases efficiency)
+${addBurnishing ? '- 1500+ RPM burnisher for final high-gloss finish' : ''}
+
+Secondary Equipment:
+- Extension cords (GFCI protected)
+- Mop bucket and wringer
+- Squeegees for tight areas
+- Edge cleaning tools
+
+PROJECT SPECIFICATIONS
+======================
+${serviceType === 'strip_refinish' ? `Strip Process:
+- Complete removal of existing finish
+- Neutralize with clean water rinses
+- Allow proper drying time between steps` : `Scrub Process:
+- Deep clean existing finish surface
+- Remove buildup without finish removal
+- Prepare surface for new topcoats`}
+
+Finish Application:
+- Apply ${coats} even coats with proper dry time
+- Maintain consistent mil thickness
+- Ensure proper cross-linking between coats
+${addBurnishing ? '\nBurnishing:\n- High-speed burnish after final coat cure\n- Achieve glass-like finish appearance' : ''}
+
+ENVIRONMENTAL REQUIREMENTS
+===========================
+Temperature: 65-75°F (optimal curing conditions)
+Humidity: 30-50% relative humidity
+Ventilation: Adequate air circulation required
+Lighting: Proper lighting for quality control
+
+QUALITY STANDARDS
+=================
+- No streaking or bubbling in finish
+- Uniform gloss level throughout
+- Complete adhesion to substrate
+- No footprints or contamination
+- Clean, sharp edges at perimeters
+
+This specification provides estimated requirements based on industry standards and project parameters. Actual quantities may vary based on specific site conditions and contractor methods.
+            `;
+            
+            downloadTextAsPDF(vendorContent, `Vendor_Specifications_${squareFootage}sqft_${new Date().toISOString().split('T')[0]}.pdf`);
+        }
+        
+        function generateClientPDF() {
+            const squareFootage = parseFloat(document.getElementById('squareFootage').value) || 0;
+            const serviceType = document.getElementById('serviceType').value;
+            const addBurnishing = document.getElementById('addBurnishing').checked;
+            const coats = parseInt(document.getElementById('coats').value) || 0;
+            const floorType = document.getElementById('floorType').value;
+            
+            if (squareFootage <= 0) {
+                alert('Please enter project details before generating client instructions.');
+                return;
+            }
+            
+            const serviceTypeText = serviceType === 'strip_refinish' ? 'Strip & Refinish Service' : 'Scrub & Recoat Service';
+            const burnishingText = addBurnishing ? ' with High-Gloss Burnishing' : '';
+            const floorTypeText = floorType.toUpperCase();
+            
+            const clientContent = `
+FLOOR CARE SERVICE INSTRUCTIONS
+Generated: ${new Date().toLocaleDateString()}
+
+SERVICE OVERVIEW
+================
+Service Scheduled: ${serviceTypeText}${burnishingText}
+Area: ${squareFootage.toLocaleString()} square feet
+Floor Type: ${floorTypeText}
+Finish Coats: ${coats} coats of premium floor finish
+
+PRE-SERVICE PREPARATION
+=======================
+REQUIRED - 24 Hours Before Service:
+□ Remove ALL furniture and equipment from the area
+□ Ensure room temperature is between 65-75°F
+□ Provide access to electrical outlets
+□ Clear pathways for equipment movement
+□ Secure or remove any hanging items that could fall
+
+CRITICAL - Day of Service:
+□ Maintain temperature between 65-75°F throughout service
+□ Keep relative humidity between 30-50% if possible
+□ Ensure adequate ventilation (HVAC system operational)
+□ Restrict access to work areas during service
+□ Have building contact person available
+
+DURING SERVICE PROCESS
+======================
+What to Expect:
+${serviceType === 'strip_refinish' ? `• Complete removal of old floor finish
+• Deep cleaning and preparation of floor surface
+• Application of ${coats} new coats of premium finish` : `• Deep scrubbing to remove surface buildup
+• Thorough cleaning and preparation
+• Application of ${coats} fresh topcoats`}
+${addBurnishing ? '• Final high-speed burnishing for glass-like finish' : ''}
+
+Service Duration:
+• Work will be completed in phases
+• Each finish coat requires proper curing time
+• Total project time depends on floor condition and size
+
+CURING AND ACCESS RESTRICTIONS
+===============================
+CRITICAL TIMING INFORMATION:
+
+Light Foot Traffic:
+• Wait MINIMUM 2 hours after final coat
+• Wear soft-soled shoes only
+• No furniture replacement yet
+
+Normal Foot Traffic:
+• Wait MINIMUM 24 hours after final coat
+• Regular shoes permitted
+• Still no furniture or equipment
+
+Furniture Replacement:
+• Wait MINIMUM 72 hours (3 full days)
+• Use furniture pads under all legs
+• Drag nothing across the floor
+
+FULL CURE COMPLETE:
+• 7-10 days for maximum durability
+• Heavy equipment can be moved after full cure
+
+ENVIRONMENTAL REQUIREMENTS
+===========================
+MAINTAIN THESE CONDITIONS FOR 72 HOURS:
+□ Temperature: 65-75°F (CRITICAL)
+□ No direct sunlight on floor during curing
+□ Minimal humidity fluctuations
+□ Avoid opening/closing exterior doors frequently
+□ No wet mopping for first 72 hours
+
+POST-SERVICE CARE INSTRUCTIONS
+===============================
+First Week:
+• Dust mop or vacuum only (no wet cleaning)
+• Report any issues immediately
+• No furniture pads removal or adjustments
+
+Ongoing Maintenance:
+• Use only pH-neutral floor cleaners
+• Damp mop (not wet mop) for routine cleaning
+• Place mats at all entrances
+• Address spills immediately
+• Use furniture pads permanently
+
+QUALITY GUARANTEE
+=================
+Your new floor finish is backed by our quality guarantee:
+• Uniform appearance and gloss level
+• Proper adhesion and durability
+• Professional workmanship standards
+• Responsive service for any concerns
+
+WARRANTY INFORMATION
+====================
+• Material defects covered per manufacturer warranty
+• Workmanship guaranteed for specified period
+• Proper maintenance required for warranty validity
+• Document any concerns within 48 hours
+
+IMPORTANT CONTACT INFORMATION
+=============================
+Service Issues: Contact immediately if you notice:
+• Bubbling or peeling finish
+• Uneven gloss or appearance
+• Strong odors persisting beyond 24 hours
+• Any safety concerns
+
+Emergency Contact: [Your company emergency number]
+Business Hours: [Your business hours]
+Email: [Your company email]
+
+FINAL REMINDERS
+===============
+✓ Temperature control is CRITICAL for proper curing
+✓ Wait full 72 hours before furniture replacement
+✓ Use furniture pads permanently
+✓ Follow maintenance guidelines for longevity
+✓ Contact us immediately with any concerns
+
+Thank you for choosing City Wide Facility Solutions for your floor care needs. Following these instructions ensures optimal results and maximum durability of your investment.
+            `;
+            
+            downloadTextAsPDF(clientContent, `Client_Instructions_${squareFootage}sqft_${new Date().toISOString().split('T')[0]}.pdf`);
+        }
+        
+        function downloadTextAsPDF(content, filename) {
+            // Create a simple text-based "PDF" (actually a formatted text file)
+            // For a real PDF, you'd need a library like jsPDF, but this provides the essential information
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename.replace('.pdf', '.txt'); // Download as .txt for now
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
         }
         
         // Initialize on page load
