@@ -1307,7 +1307,7 @@ ${addBurnishing ? '\nBurnishing:\n- High-speed burnish after final coat cure\n- 
 
 ENVIRONMENTAL REQUIREMENTS
 ===========================
-Temperature: 65-75°F (optimal curing conditions)
+Temperature: 65-75 degrees F (optimal curing conditions)
 Humidity: 30-50% relative humidity
 Ventilation: Adequate air circulation required
 Lighting: Proper lighting for quality control
@@ -1356,65 +1356,65 @@ Finish Coats: ${coats} coats of premium floor finish
 PRE-SERVICE PREPARATION
 =======================
 REQUIRED - 24 Hours Before Service:
-□ Remove ALL furniture and equipment from the area
-□ Ensure room temperature is between 65-75°F
-□ Provide access to electrical outlets
-□ Clear pathways for equipment movement
-□ Secure or remove any hanging items that could fall
+- Remove ALL furniture and equipment from the area
+- Ensure room temperature is between 65-75 degrees F
+- Provide access to electrical outlets
+- Clear pathways for equipment movement
+- Secure or remove any hanging items that could fall
 
 CRITICAL - Day of Service:
-□ Maintain temperature between 65-75°F throughout service
-□ Keep relative humidity between 30-50% if possible
-□ Ensure adequate ventilation (HVAC system operational)
-□ Restrict access to work areas during service
-□ Have building contact person available
+- Maintain temperature between 65-75 degrees F throughout service
+- Keep relative humidity between 30-50% if possible
+- Ensure adequate ventilation (HVAC system operational)
+- Restrict access to work areas during service
+- Have building contact person available
 
 DURING SERVICE PROCESS
 ======================
 What to Expect:
-${serviceType === 'strip_refinish' ? `• Complete removal of old floor finish
-• Deep cleaning and preparation of floor surface
-• Application of ${coats} new coats of premium finish` : `• Deep scrubbing to remove surface buildup
-• Thorough cleaning and preparation
-• Application of ${coats} fresh topcoats`}
-${addBurnishing ? '• Final high-speed burnishing for glass-like finish' : ''}
+${serviceType === 'strip_refinish' ? `- Complete removal of old floor finish
+- Deep cleaning and preparation of floor surface
+- Application of ${coats} new coats of premium finish` : `- Deep scrubbing to remove surface buildup
+- Thorough cleaning and preparation
+- Application of ${coats} fresh topcoats`}
+${addBurnishing ? '- Final high-speed burnishing for glass-like finish' : ''}
 
 Service Duration:
-• Work will be completed in phases
-• Each finish coat requires proper curing time
-• Total project time depends on floor condition and size
+- Work will be completed in phases
+- Each finish coat requires proper curing time
+- Total project time depends on floor condition and size
 
 CURING AND ACCESS RESTRICTIONS
 ===============================
 CRITICAL TIMING INFORMATION:
 
 Light Foot Traffic:
-• Wait MINIMUM 2 hours after final coat
-• Wear soft-soled shoes only
-• No furniture replacement yet
+- Wait MINIMUM 2 hours after final coat
+- Wear soft-soled shoes only
+- No furniture replacement yet
 
 Normal Foot Traffic:
-• Wait MINIMUM 24 hours after final coat
-• Regular shoes permitted
-• Still no furniture or equipment
+- Wait MINIMUM 24 hours after final coat
+- Regular shoes permitted
+- Still no furniture or equipment
 
 Furniture Replacement:
-• Wait MINIMUM 72 hours (3 full days)
-• Use furniture pads under all legs
-• Drag nothing across the floor
+- Wait MINIMUM 72 hours (3 full days)
+- Use furniture pads under all legs
+- Drag nothing across the floor
 
 FULL CURE COMPLETE:
-• 7-10 days for maximum durability
-• Heavy equipment can be moved after full cure
+- 7-10 days for maximum durability
+- Heavy equipment can be moved after full cure
 
 ENVIRONMENTAL REQUIREMENTS
 ===========================
 MAINTAIN THESE CONDITIONS FOR 72 HOURS:
-□ Temperature: 65-75°F (CRITICAL)
-□ No direct sunlight on floor during curing
-□ Minimal humidity fluctuations
-□ Avoid opening/closing exterior doors frequently
-□ No wet mopping for first 72 hours
+- Temperature: 65-75 degrees F (CRITICAL)
+- No direct sunlight on floor during curing
+- Minimal humidity fluctuations
+- Avoid opening/closing exterior doors frequently
+- No wet mopping for first 72 hours
 
 POST-SERVICE CARE INSTRUCTIONS
 ===============================
@@ -1459,11 +1459,11 @@ Email: [Your company email]
 
 FINAL REMINDERS
 ===============
-✓ Temperature control is CRITICAL for proper curing
-✓ Wait full 72 hours before furniture replacement
-✓ Use furniture pads permanently
-✓ Follow maintenance guidelines for longevity
-✓ Contact us immediately with any concerns
+- Temperature control is CRITICAL for proper curing
+- Wait full 72 hours before furniture replacement
+- Use furniture pads permanently
+- Follow maintenance guidelines for longevity
+- Contact us immediately with any concerns
 
 Thank you for choosing City Wide Facility Solutions for your floor care needs. Following these instructions ensures optimal results and maximum durability of your investment.
             `;
@@ -1472,16 +1472,59 @@ Thank you for choosing City Wide Facility Solutions for your floor care needs. F
         }
         
         function downloadTextAsPDF(content, filename) {
-            // Create a simple text-based "PDF" (actually a formatted text file)
-            // For a real PDF, you'd need a library like jsPDF, but this provides the essential information
-            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            // Convert to RTF format for better Word compatibility
+            const rtfContent = convertToRTF(content);
+            const blob = new Blob([rtfContent], { type: 'application/rtf;charset=utf-8' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = filename.replace('.pdf', '.txt'); // Download as .txt for now
+            link.download = filename.replace('.pdf', '.rtf'); // Download as .rtf
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
+        }
+        
+        function convertToRTF(text) {
+            // RTF header
+            let rtf = '{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Times New Roman;}}';
+            
+            // Split text into lines and format
+            const lines = text.split('\n');
+            
+            for (let line of lines) {
+                if (line.trim() === '') {
+                    rtf += '\\par ';
+                } else if (line.includes('=====')) {
+                    // Skip separator lines
+                    rtf += '\\par ';
+                } else if (line.match(/^[A-Z\s]+$/) && line.length > 5 && !line.includes(':')) {
+                    // Main headers (all caps, no colons)
+                    rtf += '\\par \\b\\fs28 ' + escapeRTF(line.trim()) + '\\b0\\fs24\\par ';
+                } else if (line.includes(':') && !line.startsWith(' ') && !line.startsWith('•') && !line.startsWith('□') && !line.startsWith('✓')) {
+                    // Subheaders (contains colon, not indented)
+                    rtf += '\\par \\b\\fs26 ' + escapeRTF(line.trim()) + '\\b0\\fs24\\par ';
+                } else if (line.startsWith('□') || line.startsWith('✓')) {
+                    // Checkboxes
+                    rtf += '\\par ' + escapeRTF(line.trim()) + '\\par ';
+                } else if (line.startsWith('•') || line.startsWith('-')) {
+                    // Bullet points
+                    rtf += '\\par \\bullet ' + escapeRTF(line.trim().substring(1)) + '\\par ';
+                } else {
+                    // Regular text
+                    rtf += '\\par ' + escapeRTF(line.trim()) + '\\par ';
+                }
+            }
+            
+            rtf += '}';
+            return rtf;
+        }
+        
+        function escapeRTF(text) {
+            // Escape special RTF characters
+            return text.replace(/\\/g, '\\\\')
+                      .replace(/\{/g, '\\{')
+                      .replace(/\}/g, '\\}')
+                      .replace(/\n/g, '\\par ');
         }
         
         // Initialize on page load
