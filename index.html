@@ -596,8 +596,8 @@
                     <div class="value" id="materialCost">$0</div>
                 </div>
                 <div class="result-card">
-                    <h3>Total Cost to CW</h3>
-                    <div class="value" id="totalCost">$0</div>
+                    <h3>Total Due to Vendor</h3>
+                    <div class="value" id="totalDueVendor">$0</div>
                 </div>
                 <div class="result-card">
                     <h3>Price Per Sq Ft</h3>
@@ -1059,6 +1059,30 @@
                 // Material costs calculation
                 finalMaterialCosts = calculateMaterialCosts(stripperCost, finishCost, padsCost, suppliesCost, cwMargin);
                 
+                // Calculate total due to vendor (what FSM actually pays)
+                let totalDueToVendor = 0;
+                
+                // Add vendor labor cost (only if vendor provides labor)
+                if (costProviders.labor === 'vendor') {
+                    totalDueToVendor += totalHours * finalVendorRate * timeMultiplier;
+                }
+                
+                // Add vendor equipment cost (only if vendor provides equipment)
+                if (costProviders.equipment === 'vendor') {
+                    totalDueToVendor += totalHours * equipmentRate;
+                }
+                
+                // Add vendor material costs (only if vendor provides materials)
+                if (costProviders.stripper === 'vendor') {
+                    totalDueToVendor += stripperCost;
+                }
+                if (costProviders.finish === 'vendor') {
+                    totalDueToVendor += finishCost;
+                }
+                if (costProviders.pads === 'vendor') {
+                    totalDueToVendor += padsCost + suppliesCost;
+                }
+                
                 // Total costs (already include margins)
                 const totalCostToCW = vendorLaborCost + equipmentCost + finalMaterialCosts.total;
                 const finalClientPrice = totalCostToCW; // Already includes all markups
@@ -1070,7 +1094,7 @@
                 document.getElementById('vendorLaborCost').textContent = formatCurrency(vendorLaborCost);
                 document.getElementById('equipmentCost').textContent = formatCurrency(equipmentCost);
                 document.getElementById('materialCost').textContent = formatCurrency(finalMaterialCosts.total);
-                document.getElementById('totalCost').textContent = formatCurrency(totalCostToCW);
+                document.getElementById('totalDueVendor').textContent = formatCurrency(totalDueToVendor);
                 document.getElementById('pricePerSqFt').textContent = formatCurrencyDetailed(pricePerSqFt);
                 document.getElementById('bidPrice').textContent = formatCurrency(finalClientPrice);
                 document.getElementById('cwProfit').textContent = formatCurrency(cwGrossProfit);
