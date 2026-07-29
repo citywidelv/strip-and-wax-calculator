@@ -220,6 +220,11 @@ body{
           <p style="font-size:11.5px;color:var(--cw-grey);margin-bottom:12px">Toggle on every service in this bid. Each service prices from a cost build-up: crew labor, chemicals by coverage, equipment, and a small crew-company profit, then City Wide margin. Every number is adjustable.</p>
           <div id="svcList"></div>
         </div>
+        <div class="card" id="shopCard" style="display:none">
+          <h2>Chemical Shopping List</h2>
+          <p style="font-size:11.5px;color:var(--cw-grey);margin-bottom:10px">What to buy for this job, by product. Unit prices are our seeded costs: double-check current pricing on Brady (Imperial Brady) or Staples Advantage before ordering, and update the Rate Book if it moved.</p>
+          <div id="shopList"></div>
+        </div>
       </div>
       <div class="summarywrap">
         <div class="summary">
@@ -417,32 +422,37 @@ function priceService(s){
 
   /* chemicals */
   let chems=[]; let chemCost=0;
-  function addChem(label,gal,perGal,packNote){const c=gal*perGal;chemCost+=c;chems.push({label,gal,cost:c,packNote});}
+  function addChem(prod,label,gal,perGal,packNote,packGal,packLabel,packPrice){
+    const c=gal*perGal;chemCost+=c;
+    chems.push({prod,label,gal,cost:c,packNote,packGal:packGal||1,packLabel:packLabel||'1 gal',packPrice:packPrice||perGal,buy:Math.max(1,Math.ceil(gal/(packGal||1)))});
+  }
+  function packOf(p,defGal){const m=(p.pack||'').match(/[\d.]+/);return m?parseFloat(m[0]):(defGal||1);}
   if(s.usesStripper){
     const rtuGal=sf/800*cond.chem;
     const concGal=rtuGal/(brand.stripper.dilution||4);
-    const perGal=brand.stripper.cost/parseFloat((brand.stripper.pack||'5').match(/[\d.]+/)[0]);
-    addChem(brand.stripper.name, Math.ceil(concGal*10)/10, perGal,'concentrate');
+    const pg=packOf(brand.stripper,5);
+    const perGal=brand.stripper.cost/pg;
+    addChem(brand.stripper.name, brand.stripper.name, Math.ceil(concGal*10)/10, perGal,'concentrate',pg,brand.stripper.pack,brand.stripper.cost);
   }
   if(coats>0){
     let fin=brand.finish, kind='finish';
     if(s.usesMatte){fin=brand.matte;kind='matte finish';}
-    if(s.usesESD){fin={name:SPECIALTY.esd.name,cost:SPECIALTY.esd.cov?SPECIALTY.esd.cost:95.5,cov:SPECIALTY.esd.cov,pack:'1 gal'};}
+    if(s.usesESD){fin={name:SPECIALTY.esd.name,cost:SPECIALTY.esd.cost,cov:SPECIALTY.esd.cov,pack:'1 gal'};}
     if(s.usesWood){fin={name:SPECIALTY.wood.name,cost:SPECIALTY.wood.cost,cov:SPECIALTY.wood.cov,pack:'1 gal'};}
     if(s.usesStoneSeal){fin={name:SPECIALTY.stoneSeal.name,cost:SPECIALTY.stoneSeal.cost,cov:SPECIALTY.stoneSeal.cov,pack:'1 gal'};}
-    if(s.usesConcrete){fin={name:SPECIALTY.concrete.name,cost:SPECIALTY.concrete.cost/5,cov:SPECIALTY.concrete.covPer,pack:'1 gal'};}
-    const packGal=fin.pack&&fin.pack.match(/[\d.]+/)?parseFloat(fin.pack.match(/[\d.]+/)[0]):1;
-    const perGal=(fin.pack&&packGal>1)?fin.cost/packGal:fin.cost;
+    if(s.usesConcrete){fin={name:SPECIALTY.concrete.name,cost:SPECIALTY.concrete.cost,cov:SPECIALTY.concrete.covPer,pack:'5 gal'};}
+    const packGal=packOf(fin,1);
+    const perGal=packGal>1?fin.cost/packGal:fin.cost;
     const gal=sf*coats/(fin.cov||2000);
-    addChem(fin.name+' ('+coats+' coats)', Math.ceil(gal*10)/10, perGal, kind);
-    if(s.usesSealer&&$('brand').value!=='scj'&&(st.sealerCoat!==false)){
+    addChem(fin.name, fin.name+' ('+coats+' coats)', Math.ceil(gal*10)/10, perGal, kind, packGal, fin.pack||'1 gal', fin.cost);
+    if(s.usesSealer&&$('brand').value!=='scj'&&(st.sealerCoat!==false)&&brand.sealer.cost>0){
+      const spg=packOf(brand.sealer,5);
       const sGal=sf/(brand.sealer.cov||2000);
-      const sPer=brand.sealer.cost/5;
-      if(brand.sealer.cost>0)addChem(brand.sealer.name+' (1 base coat)', Math.ceil(sGal*10)/10, sPer,'sealer');
+      addChem(brand.sealer.name, brand.sealer.name+' (1 base coat)', Math.ceil(sGal*10)/10, brand.sealer.cost/spg,'sealer',spg,brand.sealer.pack,brand.sealer.cost);
     }
   }
-  if(s.usesSprayBuff){const gal=sf/(brand.sprayBuff.cov||25000);const per=brand.sprayBuff.cost/4;addChem(brand.sprayBuff.name,Math.ceil(gal*100)/100,per,'restorer');}
-  if(s.usesStonePads){chemCost+=sf*SPECIALTY.crystallizer.padPerSF;chems.push({label:'Diamond pads, powder &amp; crystallizer wear',gal:0,cost:sf*SPECIALTY.crystallizer.padPerSF,packNote:'consumables'});}
+  if(s.usesSprayBuff){const pg=packOf(brand.sprayBuff,4);const gal=sf/(brand.sprayBuff.cov||25000);addChem(brand.sprayBuff.name,brand.sprayBuff.name,Math.ceil(gal*100)/100,brand.sprayBuff.cost/pg,'restorer',pg,brand.sprayBuff.pack,brand.sprayBuff.cost);}
+  if(s.usesStonePads){chemCost+=sf*SPECIALTY.crystallizer.padPerSF;chems.push({prod:'Diamond pads, powder & crystallizer',label:'Diamond pads, powder & crystallizer wear',gal:0,cost:sf*SPECIALTY.crystallizer.padPerSF,packNote:'consumables',packGal:0,packLabel:'per SF allowance',packPrice:0,buy:0});}
 
   /* equipment */
   const equipCost=clockHrs*(parseFloat(st.equip)||s.equip);
@@ -552,6 +562,31 @@ function howTo(s){
   return '<details class="howto"><summary>How it is done: crew, machines &amp; process</summary><div class="hbody"><p>'+s.desc+'</p>'+(H[s.id]||'')+'</div></details>';
 }
 
+
+/* ---------- CHEMICAL SHOPPING LIST ---------- */
+function renderShopping(results){
+  const agg={};
+  results.forEach(r=>{(r.chems||[]).forEach(c=>{
+    if(!agg[c.prod])agg[c.prod]={prod:c.prod,gal:0,packGal:c.packGal,packLabel:c.packLabel,packPrice:c.packPrice,note:c.packNote,consumable:c.buy===0,cost:0};
+    agg[c.prod].gal+=c.gal; agg[c.prod].cost+=c.cost;
+  });});
+  const items=Object.values(agg);
+  $('shopCard').style.display=items.length?'':'none';
+  if(!items.length)return;
+  $('shopList').innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px">'
+  +'<tr><th style="text-align:left;padding:6px 8px;background:var(--cw-black);color:#fff">Product</th><th style="text-align:right;padding:6px 8px;background:var(--cw-black);color:#fff">Needed</th><th style="text-align:right;padding:6px 8px;background:var(--cw-black);color:#fff">Buy</th><th style="text-align:right;padding:6px 8px;background:var(--cw-black);color:#fff">Unit Price</th><th style="text-align:right;padding:6px 8px;background:var(--cw-black);color:#fff">Purchase Total</th></tr>'
+  +items.map(it=>{
+    if(it.consumable)return '<tr><td style="padding:6px 8px;border-bottom:1px solid var(--cw-border)">'+it.prod+'</td><td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)">allowance</td><td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)">as needed</td><td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)"></td><td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)">'+money(it.cost)+'</td></tr>';
+    const buy=Math.max(1,Math.ceil(it.gal/(it.packGal||1)));
+    return '<tr><td style="padding:6px 8px;border-bottom:1px solid var(--cw-border)">'+it.prod+'</td>'
+    +'<td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)">'+it.gal.toFixed(1)+' gal</td>'
+    +'<td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)"><b>'+buy+' x '+it.packLabel+'</b></td>'
+    +'<td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)">'+money2(it.packPrice)+'</td>'
+    +'<td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)"><b>'+money(buy*it.packPrice)+'</b></td></tr>';
+  }).join('')
+  +'</table>'
+  +'<p style="font-size:10.5px;color:var(--cw-grey);margin-top:8px">Needed = coverage math for this job. Buy = whole pails and cases rounded up. Build-up cost charges only the gallons used; leftover product stays in our inventory for the next job.</p>';
+}
 /* ---------- SUMMARY ---------- */
 function recalc(){
   const region=REGIONS[$('region').value];
@@ -575,6 +610,7 @@ function recalc(){
   $('mPerSF').textContent=totSF?money2(total/totSF):'$0.00';
   $('mHours').textContent=totHrs.toFixed(1);
   $('mSvcs').textContent=results.length;
+  renderShopping(results);
   $('minRow').style.display=minMsg?'flex':'none';
   $('minMsg').textContent=minMsg;
   const ov=parseFloat($('ovMargin').value);
@@ -700,6 +736,13 @@ function printQuote(internal){
     }
     h+='</div>';
   });
+  if(internal){
+    const agg={};results.forEach(r=>{(r.chems||[]).forEach(c=>{if(!agg[c.prod])agg[c.prod]={prod:c.prod,gal:0,packGal:c.packGal,packLabel:c.packLabel,packPrice:c.packPrice,consumable:c.buy===0,cost:0};agg[c.prod].gal+=c.gal;agg[c.prod].cost+=c.cost;});});
+    const items=Object.values(agg);
+    if(items.length){h+='<div class="p-svc"><h4>Chemical Shopping List (verify current pricing at Brady / Staples Advantage)</h4><table class="p-table"><tr><th>Product</th><th>Needed</th><th>Buy</th><th>Unit Price</th><th>Purchase Total</th></tr>'
+      +items.map(it=>{if(it.consumable)return '<tr><td>'+it.prod+'</td><td>allowance</td><td>as needed</td><td></td><td>'+money(it.cost)+'</td></tr>';const buy=Math.max(1,Math.ceil(it.gal/(it.packGal||1)));return '<tr><td>'+it.prod+'</td><td>'+it.gal.toFixed(1)+' gal</td><td>'+buy+' x '+it.packLabel+'</td><td>'+money2(it.packPrice)+'</td><td>'+money(buy*it.packPrice)+'</td></tr>';}).join('')
+      +'</table></div>';}
+  }
   h+='<div class="p-total"><span>Total Investment'+(results.some(r=>r.events>1)?' (per event basis)':'')+'</span><span>'+money(total)+'</span></div>';
   if(internal&&$('minOverride').checked)h+='<div class="p-note"><b>Minimum override active.</b> Reason: '+($('minReason').value||'not stated')+'</div>';
   h+='<div class="p-note">'+(internal
