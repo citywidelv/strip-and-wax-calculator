@@ -188,7 +188,7 @@ body{
       <div class="cfield"><label>Performed By</label><select id="laborBy" onchange="recalc()"><option value="vendor">Vendor Crew</option><option value="inhouse">City Wide In-House</option></select></div>
       <div class="cfield"><label>Chemicals Provided By</label>
         <select id="chemProvider" onchange="recalc()">
-          <option value="cw">City Wide (tolled at our cost)</option>
+          <option value="cw">City Wide Supplies</option>
           <option value="vendor">Crew Provides (their cost + 15%)</option>
         </select>
       </div>
@@ -529,7 +529,7 @@ function renderServices(){
         +r.chems.map(c=>'<div class="bl"><span>'+c.label+(c.gal?' ('+c.gal+' gal '+c.packNote+')':'')+'</span><b>'+money(c.cost)+'</b></div>').join('')
         +'<div class="bl"><span>Equipment fee ('+r.clockHrs.toFixed(1)+' hrs @ $'+((S.inputs[s.id]&&S.inputs[s.id].equip)||s.equip)+'/hr)</span><b>'+money(r.equipCost)+'</b></div>'
         +(r.inhouse?'':'<div class="bl"><span>Crew company profit ('+(SUB_PROFIT*100).toFixed(0)+'%, hold 5-8%)</span><b>'+money(r.vendorCost-r.vendorBase)+'</b></div>')
-        +'<div class="bl tot"><span>'+(r.inhouse?'In-house crew cost':'We pay the crew')+(r.cwChems?' (City Wide tolls chemicals: '+money(r.cwChems)+')':'')+'</span><b>'+money(r.vendorCost)+'</b></div>'
+        +'<div class="bl tot"><span>'+(r.inhouse?'In-house crew cost':'We pay the crew')+(r.cwChems?' (City Wide supplies chemicals: '+money(r.cwChems)+')':'')+'</span><b>'+money(r.vendorCost)+'</b></div>'
         +'<div class="bl tot" style="color:var(--cw-red)"><span>Client price @ '+r.margin+'% margin x '+REGIONS[$('region').value].mult.toFixed(2)+' regional</span><b>'+money(r.price)+' ('+money2(r.perSF)+'/SF)</b></div>'
         +'<div class="bl mkt"><span>2026 market check: '+money2(r.mktLow)+'-'+money2(r.mktHigh)+'/SF here. '+flag+'</span></div>'
         +'</div>';
@@ -734,7 +734,7 @@ function printQuote(internal){
       +r.chems.map(c=>'<tr><td>'+c.label+(c.gal?' ('+c.gal+' gal)':'')+'</td><td>'+money(c.cost)+'</td></tr>').join('')
       +'<tr><td>Equipment fee</td><td>'+money(r.equipCost)+'</td></tr>'
       +'<tr><td><b>Crew company total (incl '+(SUB_PROFIT*100)+'% profit)</b></td><td><b>'+money(r.vendorCost)+'</b></td></tr>'
-      +(r.cwChems?'<tr><td>City Wide tolled chemicals</td><td>'+money(r.cwChems)+'</td></tr>':'')
+      +(r.cwChems?'<tr><td>City Wide supplied chemicals</td><td>'+money(r.cwChems)+'</td></tr>':'')
       +'<tr><td><b>Margin '+r.margin+'% | Regional x'+region.mult.toFixed(2)+' | '+money2(r.finalPrice/r.sf)+'/SF (market '+money2(r.mktLow)+'-'+money2(r.mktHigh)+')</b></td><td><b>'+money(r.finalPrice)+'</b></td></tr></table>';
     }
     h+='</div>';
