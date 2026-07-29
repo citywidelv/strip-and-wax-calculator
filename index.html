@@ -158,7 +158,7 @@ body{
 </head>
 <body>
 <div class="container">
-  <div class="logobar" style="position:relative"><a href="https://citywidelv.github.io/cw-ops-desk/" style="position:absolute;left:18px;top:50%;transform:translateY(-50%);font-size:11.5px;font-weight:700;color:var(--cw-grey);text-decoration:none;border:1.5px solid var(--cw-border);border-radius:14px;padding:5px 12px">&#8592; Ops Hub</a><img src="https://emailer.emfluence.com/clients/citywide/uploadedfiles/signature_logo.png" alt="City Wide Facility Solutions"></div>
+  <div class="logobar" style="position:relative"><a href="https://citywidelv.github.io/cw-ops-desk/" style="position:absolute;left:18px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:700;color:#fff;background:var(--cw-red);text-decoration:none;border-radius:16px;padding:7px 15px;box-shadow:0 2px 6px rgba(210,39,48,.3)">&#8592; Back to Ops Hub</a><img src="https://emailer.emfluence.com/clients/citywide/uploadedfiles/signature_logo.png" alt="City Wide Facility Solutions"></div>
   <div class="header">
     <h1>Waxable Floors Calculator</h1>
     <p>Strip &amp; Wax, Finish Programs &amp; Hard Floor Care Pricing for Las Vegas, Northern Nevada &amp; Arizona</p>
@@ -185,6 +185,7 @@ body{
           <option value="az">Arizona Border (Laughlin, Kingman, Havasu)</option>
         </select>
       </div>
+      <div class="cfield"><label>Performed By</label><select id="laborBy" onchange="recalc()"><option value="vendor">Vendor Crew</option><option value="inhouse">City Wide In-House</option></select></div>
       <div class="cfield"><label>Chemicals Provided By</label>
         <select id="chemProvider" onchange="recalc()">
           <option value="cw">City Wide (tolled at our cost)</option>
@@ -461,7 +462,9 @@ function priceService(s){
   const chemProvider=$('chemProvider').value;
   const vendorChems=chemProvider==='vendor'?chemCost*(1+VENDOR_CHEM_MARKUP):0;
   const cwChems=chemProvider==='cw'?chemCost:0;
-  const vendorCost=(laborCost+equipCost+vendorChems)*(1+SUB_PROFIT);
+  const inhouse=($('laborBy')&&$('laborBy').value==='inhouse');
+  const vendorBase=(laborCost+equipCost+vendorChems);
+  const vendorCost=inhouse?vendorBase:vendorBase*(1+SUB_PROFIT);
   const totalCost=vendorCost+cwChems;
 
   /* margin + regional multiplier */
@@ -474,7 +477,7 @@ function priceService(s){
   const rateOv=parseFloat(st.rateOv);
   if(!isNaN(rateOv)&&rateOv>0)price=sf*rateOv;
 
-  return {s,sf,cond,coats,events,manHrs,crew,clockHrs,wage,laborCost,chems,chemCost,cwChems,vendorChems,equipCost,vendorCost,totalCost,margin,price,perSF:price/sf,
+  return {s,sf,cond,coats,events,manHrs,crew,clockHrs,wage,laborCost,chems,chemCost,cwChems,vendorChems,equipCost,vendorBase,vendorCost,inhouse,totalCost,margin,price,perSF:price/sf,
     mktLow:s.mkt[0]*region.mult,mktHigh:s.mkt[1]*region.mult};
 }
 
@@ -525,8 +528,8 @@ function renderServices(){
         +'<div class="bl"><span>Crew labor: '+r.manHrs.toFixed(1)+' man-hrs ('+r.crew+' crew x '+r.clockHrs.toFixed(1)+' hrs) @ $'+r.wage.toFixed(2)+' + '+(BURDEN*100)+'% burden</span><b>'+money(r.laborCost)+'</b></div>'
         +r.chems.map(c=>'<div class="bl"><span>'+c.label+(c.gal?' ('+c.gal+' gal '+c.packNote+')':'')+'</span><b>'+money(c.cost)+'</b></div>').join('')
         +'<div class="bl"><span>Equipment fee ('+r.clockHrs.toFixed(1)+' hrs @ $'+((S.inputs[s.id]&&S.inputs[s.id].equip)||s.equip)+'/hr)</span><b>'+money(r.equipCost)+'</b></div>'
-        +'<div class="bl"><span>Crew company profit ('+(SUB_PROFIT*100).toFixed(0)+'%, hold 5-8%)</span><b>'+money(r.vendorCost-(r.laborCost+r.equipCost+r.vendorChems))+'</b></div>'
-        +'<div class="bl tot"><span>We pay the crew'+(r.cwChems?' (City Wide tolls chemicals: '+money(r.cwChems)+')':'')+'</span><b>'+money(r.vendorCost)+'</b></div>'
+        +(r.inhouse?'':'<div class="bl"><span>Crew company profit ('+(SUB_PROFIT*100).toFixed(0)+'%, hold 5-8%)</span><b>'+money(r.vendorCost-r.vendorBase)+'</b></div>')
+        +'<div class="bl tot"><span>'+(r.inhouse?'In-house crew cost':'We pay the crew')+(r.cwChems?' (City Wide tolls chemicals: '+money(r.cwChems)+')':'')+'</span><b>'+money(r.vendorCost)+'</b></div>'
         +'<div class="bl tot" style="color:var(--cw-red)"><span>Client price @ '+r.margin+'% margin x '+REGIONS[$('region').value].mult.toFixed(2)+' regional</span><b>'+money(r.price)+' ('+money2(r.perSF)+'/SF)</b></div>'
         +'<div class="bl mkt"><span>2026 market check: '+money2(r.mktLow)+'-'+money2(r.mktHigh)+'/SF here. '+flag+'</span></div>'
         +'</div>';
@@ -762,7 +765,7 @@ function copyQuote(){
 }
 
 /* ---------- SAVED WORK (local + cloud) ---------- */
-function snapshot(){return {acct:$('acct').value,qdate:$('qdate').value,prepBy:$('prepBy').value,region:$('region').value,brand:$('brand').value,chemProvider:$('chemProvider').value,ovMargin:$('ovMargin').value,minOverride:$('minOverride').checked,minReason:$('minReason').value,svcOn:S.svcOn,inputs:S.inputs};}
+function snapshot(){return {acct:$('acct').value,qdate:$('qdate').value,prepBy:$('prepBy').value,region:$('region').value,brand:$('brand').value,chemProvider:$('chemProvider').value,laborBy:$('laborBy').value,ovMargin:$('ovMargin').value,minOverride:$('minOverride').checked,minReason:$('minReason').value,svcOn:S.svcOn,inputs:S.inputs};}
 function applySnapshot(p){
   $('acct').value=p.acct||'';$('qdate').value=p.qdate||'';$('prepBy').value=p.prepBy||'';
   $('region').value=p.region||'lv';$('brand').value=p.brand||'diversey';$('chemProvider').value=p.chemProvider||'cw';
