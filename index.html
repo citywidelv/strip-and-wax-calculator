@@ -354,10 +354,11 @@ const BRANDS={
 /* ---------- SERVICES.
    min = crew minutes per 1,000 SF before coats (ISSA 540/612 task times: strip 80, pickup 25, rinse 30, touch-up 12).
    coatMin = minutes per 1,000 SF per coat (ISSA flat mop 5 to mop 36; 18 planned for edges and real-world pace).
-   mkt = market price per SF [at 1,000 SF or less, at 30,000 SF or more] in Las Vegas. Sliding scale in between. ---------- */
+   mkt = market price per SF [at 1,000 SF or less, at 30,000 SF or more] in Las Vegas. Sliding scale in between.
+   vendMin = the least a floor crew will take per SF (TJ, Oct 27 2026: strip and wax crews charge at least $0.55/SF). Vendor pay never drops below it. ---------- */
 const SERVICES=[
  {id:'stripwax', name:'Strip & Wax', sub:'Full strip-out plus new finish system. VCT, vinyl, linoleum, rubber', ico:'stripwax',
-  min:147, coatMin:18, coats:4, coatsMin:3, coatsMax:6, furn:true, equip:15, minOwn:450, mkt:[1.00,0.65],
+  min:147, coatMin:18, coats:4, coatsMin:3, coatsMax:6, furn:true, equip:15, minOwn:450, mkt:[1.00,0.65], vendMin:0.55,
   supplies:['strip','neutralizer','pad_strip','pad_doodle','finish','sealer','pad_finish'],
   desc:'Complete removal of the old finish down to bare floor, neutralizing rinse, then a rebuilt finish system applied in thin coats.'},
  {id:'scrubrecoat', name:'Scrub & Recoat', sub:'Deep scrub the top layer, apply 1-2 fresh coats. The 6-month program', ico:'scrub',
@@ -442,7 +443,8 @@ let S={svcOn:{}, inputs:{}, user:localStorage.getItem('cwfloors_user')||''};
 let SUPPLY=JSON.parse(JSON.stringify(DEFAULT_SUPPLY));
 try{const saved=localStorage.getItem('cwfloors_supply_v2'); if(saved){const p=JSON.parse(saved); Object.keys(p).forEach(k=>{if(SUPPLY[k]&&typeof p[k]==='number'&&p[k]>0)SUPPLY[k].price=p[k];});}}catch(e){}
 try{const savedM=localStorage.getItem('cwfloors_mkt_v2'); if(savedM){const p=JSON.parse(savedM); SERVICES.forEach(s=>{if(p[s.id]&&p[s.id].length===2)s.mkt=p[s.id];});}}catch(e){}
-const DEFAULT_MKT={}; SERVICES.forEach(s=>{DEFAULT_MKT[s.id]=s.mkt.slice();});
+const DEFAULT_MKT={}, DEFAULT_VMIN={}; SERVICES.forEach(s=>{DEFAULT_MKT[s.id]=s.mkt.slice();DEFAULT_VMIN[s.id]=s.vendMin||0;});
+try{const savedV=localStorage.getItem('cwfloors_vmin_v2'); if(savedV){const p=JSON.parse(savedV); SERVICES.forEach(s=>{if(typeof p[s.id]==='number')s.vendMin=p[s.id];});}}catch(e){}
 
 function svcInput(id,field,def){const st=S.inputs[id]||{};return (field in st)?st[field]:def;}
 function setSvc(id,field,val){if(!S.inputs[id])S.inputs[id]={};S.inputs[id][field]=val;recalc();autosaveSoon();}
@@ -522,7 +524,15 @@ function priceService(s){
   const cwSupply=chemProvider==='cw'?supplyCost:0;
   const inhouse=($('laborBy')&&$('laborBy').value==='inhouse');
   const vendorBase=laborCost+equipCost+vendorChems;
-  const vendorCost=inhouse?vendorBase:vendorBase*(1+SUB_PROFIT);
+  const buildVendor=inhouse?vendorBase:vendorBase*(1+SUB_PROFIT);
+  const coatAdj=s.coatMin?1+0.06*(coats-s.coats):1;
+  /* vendor pay: the crew's quote if entered, otherwise ISSA hours, never below the crew rate floor */
+  const crewQ=parseFloat(st.crewRate);
+  /* the crew rate floor is the crew's all-in price with their own product. When City Wide supplies the Staples product, the floor drops by that cost so it is not paid twice. */
+  const vendMin=Math.max(0,(s.vendMin||0)*region.mult*cond.mkt*coatAdj-(chemProvider==='cw'?supplyCost/sf:0));
+  let vendorCost=buildVendor, vendBasis='hours';
+  if(!inhouse&&!isNaN(crewQ)&&crewQ>0){vendorCost=sf*crewQ;vendBasis='quote';}
+  else if(!inhouse&&vendMin&&sf*vendMin>buildVendor){vendorCost=sf*vendMin;vendBasis='floor';}
   const supplySell=cwSupply/(1-SUPPLY_MARGIN/100);
   const totalCost=vendorCost+cwSupply;
 
@@ -531,7 +541,6 @@ function priceService(s){
   const svcOv=parseFloat(st.margin);
   const margin=(!isNaN(svcOv)&&svcOv>0)?svcOv:(!isNaN(ov)&&ov>0)?ov:autoMargin(sf);
   const costPlus=vendorCost/(1-margin/100)+supplySell;
-  const coatAdj=s.coatMin?1+0.06*(coats-s.coats):1;
   const mktRate=tierRate(s.mkt,sf)*region.mult*cond.mkt*coatAdj;
   const marketPrice=sf*mktRate;
   let price=Math.max(costPlus,marketPrice);
@@ -541,7 +550,7 @@ function priceService(s){
   const effMargin=price>0?(price-totalCost)/price*100:0;
 
   return {s,sf,cond,furn,coats,events,manHrs,crew,clockHrs,wage,techHrs,techLabor,supN,supWage,supHrs,supCost,laborCost,
-    lines,staples,crewSup,supplyCost,cwSupply,supplySell,crewSupplyCost,vendorChems,equipCost,vendorBase,vendorCost,inhouse,totalCost,
+    lines,staples,crewSup,supplyCost,cwSupply,supplySell,crewSupplyCost,vendorChems,equipCost,vendorBase,buildVendor,vendorCost,vendBasis,vendMin,inhouse,totalCost,
     margin,costPlus,mktRate,marketPrice,basis,effMargin,price,perSF:price/sf,
     mktLow:mktRate*0.9,mktHigh:mktRate*1.1};
 }
@@ -589,18 +598,20 @@ function renderServices(){
       +'<div class="field"><label>Working Supervisors</label><input type="number" min="0" step="1" value="'+(st.sup===undefined?'':st.sup)+'" placeholder="auto: '+(crewNow>=2?1:0)+'" onchange="setSvc(\''+s.id+'\',\'sup\',this.value)"><small>Crew members paid the supervisor rate. One per crew of 2 or more.</small></div>'
       +'<div class="field"><label>Supervisor $/hr</label><input type="number" step="0.5" value="'+(st.supWage||'')+'" placeholder="'+SUP_WAGE.toFixed(2)+'" onchange="setSvc(\''+s.id+'\',\'supWage\',this.value)"></div>'
       +'<div class="field"><label>Tech Wage $/hr</label><input type="number" step="0.5" value="'+(st.wage||'')+'" placeholder="'+REGIONS[$('region').value].wage.toFixed(2)+'" onchange="setSvc(\''+s.id+'\',\'wage\',this.value)"><small>Floor techs run $20-25.</small></div>'
+      +(s.vendMin?'<div class="field"><label>Crew Quote $/SF</label><input type="number" step="0.01" value="'+(st.crewRate||'')+'" placeholder="floor '+money2(s.vendMin)+'" onchange="setSvc(\''+s.id+'\',\'crewRate\',this.value)"><small>What the crew is charging on this job. Blank uses the crew rate floor.</small></div>':'')
       +'<div class="field"><label>Rate/SF Override</label><input type="number" step="0.01" value="'+(st.rateOv||'')+'" placeholder="auto" onchange="setSvc(\''+s.id+'\',\'rateOv\',this.value)"><small>Bypasses market and build-up. Note why.</small></div>'
       +'<div class="field"><label>Min Margin % Override</label><input type="number" value="'+(st.margin||'')+'" placeholder="auto '+(st.sf?autoMargin(parseFloat(st.sf)||0):'35-40')+'" onchange="setSvc(\''+s.id+'\',\'margin\',this.value)"></div>'
       +'</div>';
       if(r){
-        const basisTxt=r.basis==='market'?'<span class="mktflag ok">market rate governs</span>':(r.basis==='build'?'<span class="mktflag warn">cost build-up is above market. Check hours, coats and condition</span>':'<span class="mktflag warn">manual rate override</span>');
+        const basisTxt=r.basis==='market'?'<span class="mktflag ok">market rate governs</span>':(r.basis==='build'?'<span class="mktflag warn">'+(r.vendBasis==='hours'?'cost build-up is above market. Check hours, coats and condition':'crew pay at '+r.margin+'% margin is above the market rate. Price held at '+r.margin+'% margin')+'</span>':'<span class="mktflag warn">manual rate override</span>');
         body+='<div class="buildup">'
         +'<div class="bl"><span>Crew hours: '+r.manHrs.toFixed(1)+' man-hrs ('+r.crew+' crew x '+r.clockHrs.toFixed(1)+' hrs on site). ISSA task time +'+(ALLOWANCE*100)+'% allowance'+(r.s.furn&&r.furn.f?' +'+(r.furn.f*100)+'% furniture':'')+' + '+SETUP_HRS+' hr setup per person</span><b></b></div>'
         +'<div class="bl"><span>Techs: '+r.techHrs.toFixed(1)+' hrs @ $'+r.wage.toFixed(2)+' + '+(BURDEN*100)+'% burden</span><b>'+money(r.techLabor)+'</b></div>'
         +(r.supN?'<div class="bl"><span>Working supervisor: '+r.supHrs.toFixed(1)+' hrs @ $'+r.supWage.toFixed(2)+' + '+(BURDEN*100)+'% burden</span><b>'+money(r.supCost)+'</b></div>':'')
         +r.crewSup.map(c=>'<div class="bl"><span>'+c.name+(c.gal?' ('+c.gal.toFixed(1)+' gal)':'')+' +'+(VENDOR_CHEM_MARKUP*100)+'%</span><b>'+money(c.cost*(1+VENDOR_CHEM_MARKUP))+'</b></div>').join('')
         +'<div class="bl"><span>Equipment fee ('+r.clockHrs.toFixed(1)+' hrs @ $'+((S.inputs[s.id]&&S.inputs[s.id].equip)||s.equip)+'/hr)</span><b>'+money(r.equipCost)+'</b></div>'
-        +(r.inhouse?'':'<div class="bl"><span>Crew company profit ('+(SUB_PROFIT*100).toFixed(0)+'%, hold 5-8%)</span><b>'+money(r.vendorCost-r.vendorBase)+'</b></div>')
+        +(r.inhouse?'':'<div class="bl"><span>Crew company profit ('+(SUB_PROFIT*100).toFixed(0)+'%, hold 5-8%)</span><b>'+money(r.buildVendor-r.vendorBase)+'</b></div>')
+        +(r.vendBasis!=='hours'?'<div class="bl"><span>Hours build-up '+money(r.buildVendor)+'. '+(r.vendBasis==='quote'?'Crew quote used instead':'Raised to the crew rate floor of '+money2(r.vendMin)+'/SF')+'</span><b></b></div>':'')
         +'<div class="bl tot"><span>'+(r.inhouse?'In-house crew cost':'Vendor pay')+' ('+money2(r.vendorCost/r.sf)+'/SF)</span><b>'+money(r.vendorCost)+'</b></div>'
         +(r.cwSupply?'<div class="bl"><span>Staples supplies at City Wide cost '+money(r.cwSupply)+', billed at '+SUPPLY_MARGIN+'% margin</span><b>'+money(r.supplySell)+'</b></div>':'')
         +(r.vendorChems&&$('chemProvider').value==='vendor'?'<div class="bl"><span>Crew provides the Staples-list supplies (their cost +'+(VENDOR_CHEM_MARKUP*100)+'%, inside vendor pay)</span><b></b></div>':'')
@@ -735,7 +746,7 @@ function renderFloors(){
   +'</table>'
   +'<h2>How the Price Is Set</h2>'
   +'<p>The client price is the market rate for that size of floor, or the cost build-up at City Wide margin, whichever is higher. Strip and wax runs $1.00/SF at 1,000 SF or less and slides to $0.65/SF at 30,000 SF or more in Las Vegas. Heavy buildup adds 15% and a neglected floor adds 30%, because the market charges for it. Reno, Carson, TRIC and the Arizona border add their regional premium on top.</p>'
-  +'<p>Vendor pay comes from real crew hours, not from the price. The FSM can read it as hours times the normal rate. When the build-up beats the market rate, the card says so: check the hours, coats and condition before you send it.</p>'
+  +'<p>Vendor pay comes from real crew hours, never below the crew rate floor. Strip and wax crews charge at least $0.55/SF with their own product. When City Wide supplies the Staples product, the floor drops by that product cost so it is not paid twice. The price never drops below what the crew is paid, at City Wide margin. On large floors that puts strip and wax near $0.85/SF instead of $0.65. If a crew quotes you a lower rate on a big floor, type it in Crew Quote $/SF and the price follows.</p>'
   +'<h2>Minimums &amp; When to Override</h2>'
   +'<p>Strip and wax carries a $450 minimum. Burnish and spray buff carry $150. ESD and stone carry $500. Everything else carries $300. On a multi-service visit the minimum sits on the lead service only. Use the manual override when floors are bundled into a bigger janitorial bid or there is a specific relationship reason, and type the reason so it prints on the internal sheet.</p>';
 }
@@ -785,8 +796,8 @@ function renderRates(){
   +'<p style="margin-top:8px"><button class="btn btn-ghost" style="flex:none" onclick="resetSupply()">Reset to Oct 27 2026 prices</button></p>'
   +'<h2>Market Rates (Las Vegas, per SF)</h2>'
   +'<p>The price slides between these two numbers by floor size. Edit them when the market moves. They save to this browser.</p>'
-  +'<table><tr><th>Service</th><th>1,000 SF or less</th><th>30,000 SF or more</th><th>Minimum</th></tr>'
-  +SERVICES.map(s=>'<tr><td>'+s.name+'</td><td><input type="number" step="0.01" value="'+s.mkt[0].toFixed(2)+'" onchange="setMkt(\''+s.id+'\',0,this.value)"></td><td><input type="number" step="0.01" value="'+s.mkt[1].toFixed(2)+'" onchange="setMkt(\''+s.id+'\',1,this.value)"></td><td>'+money(s.minOwn||MIN_PRICE)+'</td></tr>').join('')
+  +'<table><tr><th>Service</th><th>1,000 SF or less</th><th>30,000 SF or more</th><th>Crew Rate Floor $/SF</th><th>Minimum</th></tr>'
+  +SERVICES.map(s=>'<tr><td>'+s.name+'</td><td><input type="number" step="0.01" value="'+s.mkt[0].toFixed(2)+'" onchange="setMkt(\''+s.id+'\',0,this.value)"></td><td><input type="number" step="0.01" value="'+s.mkt[1].toFixed(2)+'" onchange="setMkt(\''+s.id+'\',1,this.value)"></td><td><input type="number" step="0.01" value="'+(s.vendMin?s.vendMin.toFixed(2):'')+'" placeholder="hours only" onchange="setVendMin(\''+s.id+'\',this.value)"></td><td>'+money(s.minOwn||MIN_PRICE)+'</td></tr>').join('')
   +'</table>'
   +'<p style="margin-top:8px"><button class="btn btn-ghost" style="flex:none" onclick="resetMkt()">Reset market rates</button></p>'
   +'<h2>Regional Crew Wages &amp; Multipliers</h2>'
@@ -807,7 +818,8 @@ function saveSupply(){const slim={};Object.keys(SUPPLY).forEach(k=>{if(SUPPLY[k]
 function setSupply(k,v){const n=parseFloat(v);if(n>0)SUPPLY[k].price=n;saveSupply();recalc();}
 function resetSupply(){SUPPLY=JSON.parse(JSON.stringify(DEFAULT_SUPPLY));try{localStorage.removeItem('cwfloors_supply_v2');}catch(e){}renderRates();recalc();}
 function setMkt(id,i,v){const s=SERVICES.find(x=>x.id===id);const n=parseFloat(v);if(s&&n>0)s.mkt[i]=n;const o={};SERVICES.forEach(x=>{o[x.id]=x.mkt;});try{localStorage.setItem('cwfloors_mkt_v2',JSON.stringify(o));}catch(e){}recalc();}
-function resetMkt(){SERVICES.forEach(s=>{s.mkt=DEFAULT_MKT[s.id].slice();});try{localStorage.removeItem('cwfloors_mkt_v2');}catch(e){}renderRates();recalc();}
+function resetMkt(){SERVICES.forEach(s=>{s.mkt=DEFAULT_MKT[s.id].slice();s.vendMin=DEFAULT_VMIN[s.id];});try{localStorage.removeItem('cwfloors_mkt_v2');localStorage.removeItem('cwfloors_vmin_v2');}catch(e){}renderRates();recalc();}
+function setVendMin(id,v){const s=SERVICES.find(x=>x.id===id);const n=parseFloat(v);if(s)s.vendMin=n>0?n:0;const o={};SERVICES.forEach(x=>{o[x.id]=x.vendMin||0;});try{localStorage.setItem('cwfloors_vmin_v2',JSON.stringify(o));}catch(e){}recalc();}
 
 /* ---------- TABS ---------- */
 function showTab(t){
@@ -835,7 +847,8 @@ function printQuote(internal){
       +(r.supN?'<tr><td>Working supervisor '+r.supHrs.toFixed(1)+' hrs @ $'+r.supWage.toFixed(2)+' +'+(BURDEN*100)+'% burden</td><td>'+money(r.supCost)+'</td></tr>':'')
       +r.crewSup.map(c=>'<tr><td>'+c.name+' +'+(VENDOR_CHEM_MARKUP*100)+'%</td><td>'+money(c.cost*(1+VENDOR_CHEM_MARKUP))+'</td></tr>').join('')
       +'<tr><td>Equipment fee</td><td>'+money(r.equipCost)+'</td></tr>'
-      +'<tr><td><b>Vendor pay (incl '+(SUB_PROFIT*100)+'% crew profit)</b></td><td><b>'+money(r.vendorCost)+'</b></td></tr>'
+      +(r.vendBasis!=='hours'?'<tr><td>Hours build-up '+money(r.buildVendor)+'. '+(r.vendBasis==='quote'?'Crew quote used instead':'Raised to the crew rate floor '+money2(r.vendMin)+'/SF')+'</td><td></td></tr>':'')
+      +'<tr><td><b>Vendor pay</b></td><td><b>'+money(r.vendorCost)+'</b></td></tr>'
       +r.staples.map(l=>'<tr><td>Staples '+l.item+' | '+l.name+' ('+l.use+')</td><td>'+money(l.cost)+'</td></tr>').join('')
       +(r.cwSupply?'<tr><td>Supplies billed at '+SUPPLY_MARGIN+'% margin</td><td>'+money(r.supplySell)+'</td></tr>':'')
       +'<tr><td>Cost build-up @ '+r.margin+'% minimum margin</td><td>'+money(r.costPlus)+'</td></tr>'
