@@ -180,7 +180,7 @@ body{
     <div class="tab active" data-tab="quote" onclick="showTab('quote')">Build a Quote</div>
     <div class="tab" data-tab="floors" onclick="showTab('floors')">Floor Guide</div>
     <div class="tab" data-tab="process" onclick="showTab('process')">Process Playbook</div>
-    <div class="tab" data-tab="rates" onclick="showTab('rates')">Chemicals &amp; Rate Book</div>
+    <div class="tab" data-tab="rates" onclick="showTab('rates')">Supplies &amp; Rate Book</div>
   </div>
 
   <div id="tab-quote">
@@ -195,23 +195,30 @@ body{
         </select>
       </div>
       <div class="cfield"><label>Performed By</label><select id="laborBy" onchange="recalc()"><option value="vendor">Vendor Crew</option><option value="inhouse">City Wide In-House</option></select></div>
-      <div class="cfield"><label>Chemicals Provided By</label>
+      <div class="cfield"><label>Supplies Provided By</label>
         <select id="chemProvider" onchange="recalc()">
-          <option value="cw">City Wide Supplies</option>
+          <option value="cw">City Wide (Staples Value Items)</option>
           <option value="vendor">Crew Provides (their cost + 15%)</option>
         </select>
       </div>
       <div class="cfield"><label>Brand Program</label>
         <select id="brand" onchange="recalc()">
           <option value="diversey">Diversey (Signature, Pro Strip)</option>
-          <option value="spartan">Spartan (iShine, Shineline)</option>
-          <option value="scj">SC Johnson Professional</option>
+          <option value="betco">Betco (Hard As Nails, Extreme)</option>
         </select>
       </div>
-      <div class="cfield"><label>Override Margin % (blank = auto by job size)</label>
-        <input type="number" id="ovMargin" placeholder="auto 32-40" style="width:110px" oninput="recalc()">
+      <div class="cfield"><label>Furniture to Move</label>
+        <select id="furniture" onchange="recalc();autosaveSoon()">
+          <option value="none">None / open floor</option>
+          <option value="light" selected>Light (+10% time)</option>
+          <option value="office">Offices (+25% time)</option>
+          <option value="dense">Dense (+40% time)</option>
+        </select>
       </div>
-      <div class="cfield"><label>Active Margin</label><div class="marginpill" id="marginPill">auto</div></div>
+      <div class="cfield"><label>Min Margin % (blank = auto)</label>
+        <input type="number" id="ovMargin" placeholder="auto 35-40" style="width:110px" oninput="recalc()">
+      </div>
+      <div class="cfield"><label>City Wide Margin</label><div class="marginpill" id="marginPill">market rate</div></div>
       <div class="tricnote" id="regionNote"></div>
     </div>
 
@@ -227,12 +234,12 @@ body{
         </div>
         <div class="card">
           <h2>Floor Services</h2>
-          <p style="font-size:11.5px;color:var(--cw-grey);margin-bottom:12px">Toggle on every service in this bid. Each service prices from a cost build-up: crew labor, chemicals by coverage, equipment, and a small crew-company profit, then City Wide margin. Every number is adjustable.</p>
+          <p style="font-size:11.5px;color:var(--cw-grey);margin-bottom:12px">Toggle on every service in this bid. The price is the market rate for that size of floor, or the cost build-up at City Wide margin if that is higher. Vendor pay comes from ISSA-based crew hours. Every number is adjustable.</p>
           <div id="svcList"></div>
         </div>
         <div class="card" id="shopCard" style="display:none">
-          <h2>Chemical Shopping List</h2>
-          <p style="font-size:11.5px;color:var(--cw-grey);margin-bottom:10px">What to buy for this job, by product. Unit prices are our seeded costs: double-check current pricing on Brady (Imperial Brady) or Staples Advantage before ordering, and update the Rate Book if it moved.</p>
+          <h2>Supply Shopping List</h2>
+          <p style="font-size:11.5px;color:var(--cw-grey);margin-bottom:10px">What to order for this job from Staples Advantage. City Wide Facility Value Items only.</p>
           <div id="shopList"></div>
         </div>
       </div>
@@ -250,7 +257,7 @@ body{
             <div style="flex:1" id="minMsg"></div>
           </div>
           <div class="minrow">
-            <label style="cursor:pointer"><input type="checkbox" id="minOverride" onchange="recalc()"> Override $300 minimum</label>
+            <label style="cursor:pointer"><input type="checkbox" id="minOverride" onchange="recalc()"> Override minimum</label>
             <input id="minReason" placeholder="Reason (multi-service bid, GM approval...)" style="flex:1;padding:6px 8px;border:none;border-radius:5px;font-family:inherit;font-size:11px" oninput="recalc()">
           </div>
           <label class="internal-toggle"><input type="checkbox" id="showInternal" onchange="recalc()"> Show cost &amp; margin (internal)</label>
@@ -282,7 +289,7 @@ body{
 
 <div id="printArea"></div>
 <script>
-/* City Wide Waxable Floors Calculator. Built July 2026. */
+/* City Wide Waxable Floors Calculator. Built July 2026. Pricing rebuilt Oct 27 2026: market-rate pricing, ISSA crew hours, Staples City Wide Value Items. */
 'use strict';
 const ENDPOINT='https://script.google.com/macros/s/AKfycbzfNnrpidCbWB1DeUNgXvRhDFMQgApfpn-3C9GU45wMEHcJpWFl8ZQVo6PUBSRfEVfRdg/exec';
 const LOGO='https://emailer.emfluence.com/clients/citywide/uploadedfiles/signature_logo.png';
@@ -291,106 +298,132 @@ function num(id){const v=parseFloat($(id)&&$(id).value);return isNaN(v)?0:v}
 function money(n){return '$'+Math.round(n).toLocaleString()}
 function money2(n){return '$'+n.toFixed(2)}
 
-/* ---------- REGIONS (wages from the Bid Calculator Rates for Service tab + 2026 floor tech market data) ---------- */
-/* July 29, 2026 pay policy update: technician wages raised - techs $25+/hr, difficult floor work $30/hr, supervisors default $35/hr (editable per service). */
+/* ---------- PRICING MODEL (Oct 27 2026 rebuild) ----------
+   Client price = the higher of (a) the market rate for this size of floor, or (b) the cost build-up at City Wide margin.
+   Vendor pay = realistic crew hours (ISSA 540/612 task times + 20% allowance + setup + furniture) x crew wages.
+   Supplies = Staples Advantage City Wide Facility Value Items only, always marked up, never passed through at cost. */
+
+/* ---------- REGIONS. Floor techs $20-25/hr, supervisors $30/hr (TJ, Oct 2026). Multiplier applies to the market rate. ---------- */
 const REGIONS={
-  lv:   {label:'Las Vegas',            wage:30.0, mult:1.00, note:'Competitive baseline. Deep crew supply.'},
-  reno: {label:'Reno / Sparks',        wage:32.0, mult:1.08, note:'Northern Nevada premium. Janitorial wages run 13% over LV and the crew pool is thin.'},
-  carson:{label:'Carson City',         wage:32.0, mult:1.08, note:'Carson wages run highest in the state. Same premium band as Reno.'},
-  tric: {label:'TRIC / USA Parkway',   wage:34.0, mult:1.15, note:'Tahoe Regional Industrial Center premium: 20-30 min past Sparks, zero on-corridor floor crews. Mobilization is real money. Hold this premium.'},
-  az:   {label:'Arizona Border',       wage:29.0, mult:1.05, note:'Laughlin, Kingman &amp; Havasu: wages below LV but almost no local floor crews. Price like a travel market, not a cheap one.'}
+  lv:   {label:'Las Vegas',            wage:22.0, mult:1.00, note:'Competitive baseline. Deep crew supply.'},
+  reno: {label:'Reno / Sparks',        wage:23.0, mult:1.08, note:'Northern Nevada premium. Labor runs above Las Vegas and the floor crew pool is thin.'},
+  carson:{label:'Carson City',         wage:23.0, mult:1.08, note:'Same premium band as Reno.'},
+  tric: {label:'TRIC / USA Parkway',   wage:25.0, mult:1.15, note:'Tahoe Regional Industrial Center premium: 20-30 min past Sparks, no on-corridor floor crews. Mobilization is real money. Hold this premium.'},
+  az:   {label:'Arizona Border',       wage:22.0, mult:1.05, note:'Laughlin, Kingman &amp; Havasu: almost no local floor crews. Price like a travel market, not a cheap one.'}
 };
 
-/* ---------- CHEMICAL PROGRAMS. CW cost = our Staples Advantage contract / distributor pricing, July 2026. All editable in the Rate Book. ---------- */
-const DEFAULT_CHEMS={
-  diversey:{
-    label:'Diversey (Solenis)',
-    stripper:{name:'Pro Strip Heavy Duty Stripper', pack:'5 gal', cost:71.98, dilution:4, note:'Dilute 1:4 heavy build, up to 1:10 light. Our Staples Advantage price ($71.98 vs $222 market).'},
-    finish:{name:'Signature UHS Floor Finish (20% solids)', pack:'5 gal', cost:80.48, cov:2000, note:'The workhorse. Burnishable. Staples Advantage $80.48 vs $216 market.'},
-    finishPremium:{name:'Vectra ProX Finish', pack:'5 gal', cost:74.16, cov:2000},
-    matte:{name:'Carefree Matte (LVT safe)', pack:'5 gal', cost:76.70, cov:1800, note:'Matte for LVT. Never burnish it.'},
-    sealer:{name:'Plaza Plus ProX Floor Sealer', pack:'5 gal', cost:86.01, cov:2000},
-    sprayBuff:{name:'Snapback Spray Buff', pack:'4x1 gal', cost:65.20, cov:25000}
-  },
-  spartan:{
-    label:'Spartan Chemical',
-    stripper:{name:'Shineline Emulsifier Plus', pack:'5 gal', cost:133.00, dilution:4, note:'12-64 oz per gallon by buildup. Brady carries the full Spartan line. Sign into Brady for account pricing.'},
-    finish:{name:'iShine 25% High Solids Finish', pack:'5 gal', cost:165.00, cov:2000, note:'25% solids, dry-bright, burnishable.'},
-    finishPremium:{name:"On an' On Interlock Finish", pack:'5 gal', cost:170.00, cov:2000},
-    matte:{name:'Spartan matte program (quote via Brady)', pack:'5 gal', cost:165.00, cov:1800},
-    sealer:{name:'Terra Glaze Terrazzo &amp; Concrete Seal', pack:'5 gal', cost:200.00, cov:2000},
-    sprayBuff:{name:'Shineline restorer program', pack:'4x1 gal', cost:90.00, cov:25000}
-  },
-  scj:{
-    label:'SC Johnson Professional',
-    stripper:{name:'SCJP Hyper Concentrate Stripper', pack:'2 gal BIB', cost:255.86, dilution:25, note:'2 gal makes up to 50 gal RTU. Heads up: classic "Johnson Wax" finishes (ShowPlace, Vectra, Carefree) are Diversey products today. This is the modern SCJP line.'},
-    finish:{name:'SCJP Multi-Surface Finish + Sealer (FlexiFilm)', pack:'5 gal BIB', cost:222.74, cov:2500, note:'Finish and sealer in one. No separate seal coat needed.'},
-    finishPremium:{name:'SCJP Multi-Surface Finish + Sealer', pack:'5 gal BIB', cost:222.74, cov:2500},
-    matte:{name:'Use Diversey Carefree Matte for LVT', pack:'5 gal', cost:76.70, cov:1800},
-    sealer:{name:'Built into SCJP finish (skip line item)', pack:'', cost:0, cov:2000},
-    sprayBuff:{name:'SCJP finish repair coat', pack:'5 gal', cost:222.74, cov:20000}
-  }
+/* ---------- SUPPLY CATALOG. Staples Advantage "City Wide Facility Value Item" pricing only, pulled Oct 27 2026.
+   item = Staples item number. model = manufacturer number. price = City Wide price per pack. mkt = Staples market price.
+   Coverage and dilution are planning numbers. Check the label before you mix. ---------- */
+const DEFAULT_SUPPLY={
+  dv_strip:{grp:'Diversey',item:'1899065',model:'95032360',name:'Pro Strip Heavy Duty Floor Stripper, Cherry Almond',desc:'Fast, low-odor stripper. Works in cool water. Mix 1:4 for heavy build-up, up to 1:10 for light.',pack:'5 gal pail',gal:5,price:71.98,mkt:222.49,dilution:6},
+  dv_finish:{grp:'Diversey',item:'915133',model:'101110059',name:'Signature ProX Floor Finish, Ammonia Scent',desc:'High-solids burnishable finish. The workhorse for VCT.',pack:'5 gal box',gal:5,price:80.48,mkt:216.49,cov:2000},
+  dv_finish2:{grp:'Diversey',item:'897277',model:'101109988',name:'Vectra ProX Floor Finish, Ammonia Scent',desc:'Lower-cost finish for low-traffic floors.',pack:'5 gal box',gal:5,price:74.16,mkt:177.59,cov:2000},
+  dv_matte:{grp:'Diversey',item:'913580',model:'101110003',name:'Carefree Matte ProX Floor Finish, Unscented',desc:'Matte finish for LVT and LVP. Never burnish it.',pack:'5 gal box',gal:5,price:76.70,mkt:163.69,cov:1800},
+  dv_sealer:{grp:'Diversey',item:'913569',model:'101110055',name:'Plaza Plus ProX Floor Sealer',desc:'Base coat sealer for porous or new VCT.',pack:'5 gal box',gal:5,price:86.01,mkt:216.09,cov:2000},
+  dv_restorer:{grp:'Diversey',item:'198966',model:'101110065',name:'No Maintenance ProX Floor Cleaner & Restorer',desc:'Spray buff restorer between recoats.',pack:'4 x 1 gal carton',gal:4,price:68.44,mkt:207.69,cov:20000},
+  bt_strip:{grp:'Betco',item:'24534483',model:'184B500',name:'Betco Extreme Floor Stripper, Lemon Scent',desc:'Heavy-duty stripper for thick or old build-up.',pack:'5 gal box',gal:5,price:70.74,mkt:207.69,dilution:6},
+  bt_strip2:{grp:'Betco',item:'24561381',model:'151B500',name:'Betco Emulsinator Floor Stripper, Sassafras Scent',desc:'Lower-cost stripper for routine strips.',pack:'5 gal box',gal:5,price:38.78,mkt:140.09,dilution:6},
+  bt_finish:{grp:'Betco',item:'24534482',model:'659B500',name:'Betco Hard As Nails Floor Finish',desc:'Durable high-gloss finish. Label coverage 2,000-3,000 SF per gallon.',pack:'5 gal box',gal:5,price:56.58,mkt:216.59,cov:2000},
+  bt_finish2:{grp:'Betco',item:'24534479',model:'605B500',name:'Betco Glare Floor Finish',desc:'Budget finish for low-traffic floors.',pack:'5 gal box',gal:5,price:45.42,mkt:139.39,cov:2000},
+  bt_sealer:{grp:'Betco',item:'24517296',model:'609B500',name:'Betco Sure Cure Floor Sealer and Finish',desc:'Sealer that doubles as a finish on porous floors.',pack:'5 gal bag in box',gal:5,price:97.48,mkt:255.59,cov:2000},
+  bt_restorer:{grp:'Betco',item:'24560753',model:'BET6180400',name:'Betco One Step Floor Restorer, Lemon Scent',desc:'One-step cleaner and restorer for spray buffing.',pack:'4 x 1 gal carton',gal:4,price:122.78,mkt:174.69,cov:20000},
+  neutralizer:{grp:'Shared',item:'24649013',model:'9320846',name:'Aqua ChemPacs Floor Conditioner and Neutralizer',desc:'Final rinse after stripping. Alkaline residue is the top cause of finish failure.',pack:'50 pacs',units:50,unit:'pac',price:31.62,mkt:74.99,sfPer:1500},
+  neutral:{grp:'Shared',item:'915237',model:'903904',name:'Diversey Stride Citrus Neutral Floor Cleaner',desc:'Neutral cleaner for the pre-clean and scrub passes.',pack:'4 x 1 gal carton',gal:4,price:34.85,mkt:79.79,dilution:128,rtuCov:500},
+  concrete:{grp:'Shared',item:'24442781',model:'101110066',name:'JonCrete ProX Concrete and Floor Restorer',desc:'Guard and restore coat for sealed concrete.',pack:'5 gal box',gal:5,price:90.37,mkt:237.99,cov:1500},
+  pad_strip:{grp:'Pads',item:'849631',model:'730020',name:'3M High Productivity Stripping Pad, Black, 20"',desc:'Low-speed stripping pad.',pack:'5 pads',units:5,unit:'pad',price:48.30,mkt:79.79,sfPer:2500},
+  pad_scrub:{grp:'Pads',item:'813038',model:'530020',name:'3M 5300 Cleaning Floor Pad, Blue, 20"',desc:'Scrub pad for scrub and recoat and deep scrubs.',pack:'5 pads',units:5,unit:'pad',price:24.43,mkt:68.59,sfPer:6000},
+  pad_buff:{grp:'Pads',item:'812823',model:'MMM510020',name:'3M 5100 Buffing Floor Pad, Red, 20"',desc:'Spray buff pad.',pack:'5 pads',units:5,unit:'pad',price:24.41,mkt:75.69,sfPer:10000},
+  pad_burn20:{grp:'Pads',item:'203247',model:'CW24745',name:'Coastwide Professional 20" Burnishing Pad, Tan',desc:'Electric burnisher pad.',pack:'5 pads',units:5,unit:'pad',price:19.49,mkt:60.39,sfPer:40000},
+  pad_burn27:{grp:'Pads',item:'848880',model:'310027',name:'3M 3100 Burnish Floor Pad, Aqua, 27"',desc:'Propane burnisher pad.',pack:'5 pads',units:5,unit:'pad',price:54.40,mkt:129.39,sfPer:60000},
+  pad_doodle:{grp:'Pads',item:'696852',model:'8550-PK',name:'3M Doodlebug Cleaning Flood Pad, Black',desc:'Edges and corners by hand.',pack:'10 pads',units:10,unit:'pad',price:23.30,mkt:68.59,sfPer:1500},
+  pad_finish:{grp:'Pads',item:'1181023',model:'FGQ80000W',name:'Rubbermaid Microfiber Finish Pad, Blue/White',desc:'Finish applicator pads.',pack:'6 pads',units:6,unit:'pad',price:81.29,mkt:169.99,sfPer:8000}
 };
-const SPECIALTY={
-  esd:{name:'ACL Staticide Dissipative Finish', cost:95.50, cov:2000, note:'ANSI/ESD S20.20. 2 coats standard, verify 10^8-10^9 ohms with a megohmmeter.'},
-  wood:{name:'Bona Traffic HD / StreetShoe NXT (waterborne 2-part)', cost:130.00, cov:450},
-  stoneSeal:{name:'Penetrating impregnator (511-type)', cost:120.00, cov:900},
-  crystallizer:{name:'Stone crystallizer + diamond pad wear', cost:79.00, cov:1500, padPerSF:0.08},
-  concrete:{name:'JonCrete ProX Concrete Sealer', cost:386.39, cov:2000, covPer:400}
+/* No City Wide Value Item exists at Staples for these. The crew supplies them; the build-up adds the crew's cost plus 15%. */
+const CREW_SUPPLIED={
+  esd:{name:'Static-dissipative floor finish (crew supplied)',costGal:95.50,cov:2000},
+  wood:{name:'Commercial waterborne wood finish, 2-part (crew supplied)',costGal:130.00,cov:450},
+  stoneSeal:{name:'Penetrating stone and grout impregnator (crew supplied)',costGal:120.00,cov:900},
+  stonePads:{name:'Diamond pads, polishing powder and crystallizer (crew supplied)',perSF:0.08}
+};
+const BRANDS={
+  diversey:{label:'Diversey',strip:'dv_strip',finish:'dv_finish',sealer:'dv_sealer',restorer:'dv_restorer',matte:'dv_matte'},
+  betco:{label:'Betco',strip:'bt_strip',finish:'bt_finish',sealer:'bt_sealer',restorer:'bt_restorer',matte:'dv_matte'}
 };
 
-/* ---------- SERVICES. rate = SF per crew man-hour. Sub profit is what the crew company keeps after costs (hold 5-8%). ---------- */
+/* ---------- SERVICES.
+   min = crew minutes per 1,000 SF before coats (ISSA 540/612 task times: strip 80, pickup 25, rinse 30, touch-up 12).
+   coatMin = minutes per 1,000 SF per coat (ISSA flat mop 5 to mop 36; 18 planned for edges and real-world pace).
+   mkt = market price per SF [at 1,000 SF or less, at 30,000 SF or more] in Las Vegas. Sliding scale in between. ---------- */
 const SERVICES=[
  {id:'stripwax', name:'Strip & Wax', sub:'Full strip-out plus new finish system. VCT, vinyl, linoleum, rubber', ico:'stripwax',
-  rate:150, coats:4, coatsMin:3, coatsMax:6, coatRate:2000, usesStripper:true, usesSealer:true, equip:15,
-  mkt:[0.40,0.85], mktLabel:'LV 2026 retail $0.40-$0.70+/SF',
+  min:147, coatMin:18, coats:4, coatsMin:3, coatsMax:6, furn:true, equip:15, minOwn:450, mkt:[1.00,0.65],
+  supplies:['strip','neutralizer','pad_strip','pad_doodle','finish','sealer','pad_finish'],
   desc:'Complete removal of the old finish down to bare floor, neutralizing rinse, then a rebuilt finish system applied in thin coats.'},
  {id:'scrubrecoat', name:'Scrub & Recoat', sub:'Deep scrub the top layer, apply 1-2 fresh coats. The 6-month program', ico:'scrub',
-  rate:500, coats:2, coatsMin:1, coatsMax:3, coatRate:3000, usesStripper:false, equip:10,
-  mkt:[0.18,0.40],
+  min:70, coatMin:18, coats:2, coatsMin:1, coatsMax:3, furn:true, equip:10, mkt:[0.65,0.42],
+  supplies:['neutral','pad_scrub','finish','pad_finish'],
   desc:'Machine scrub removes the worn top layer of finish without a full strip, then fresh coats restore gloss and protection. Run 2 to 4 times per year to push full strips years out.'},
  {id:'deepscrub', name:'Deep Machine Scrub', sub:'Machine scrub and capture, no coating', ico:'scrub',
-  rate:800, coats:0, equip:10, mkt:[0.12,0.30],
+  min:70, coats:0, furn:true, equip:10, mkt:[0.35,0.22],
+  supplies:['neutral','pad_scrub'],
   desc:'Aggressive machine scrub with full slurry recovery. Resets a dirty floor that does not need new finish.'},
  {id:'burnish', name:'Burnishing', sub:'High-speed gloss restoration, 1500+ RPM', ico:'burnish',
-  rate:3000, coats:0, equip:15, crew1:true, freqDefault:12, mkt:[0.05,0.15],
+  min:15, coats:0, equip:15, crew1:true, freqDefault:12, minOwn:150, mkt:[0.12,0.06],
+  supplies:['pad_burn20'],
   desc:'High-speed burnishing heat-hardens the finish to a wet-look gloss. The monthly program that keeps a strip &amp; wax looking new.'},
  {id:'spraybuff', name:'Spray Buff', sub:'Restorer mist plus buff, repairs scuffs and traffic lanes', ico:'burnish',
-  rate:800, coats:0, usesSprayBuff:true, equip:10, crew1:true, freqDefault:12, mkt:[0.10,0.22],
+  min:38, coats:0, equip:10, crew1:true, freqDefault:12, minOwn:150, mkt:[0.20,0.10],
+  supplies:['restorer','pad_buff'],
   desc:'A light mist of restorer worked in with a buffing pad. Repairs scuffs, heel marks, and traffic-lane wear between recoats.'},
  {id:'lvt', name:'LVT Clean & Matte Finish', sub:'Luxury vinyl tile and plank, warranty-safe program', ico:'lvt',
-  rate:450, coats:2, coatsMin:2, coatsMax:3, coatRate:1800, usesMatte:true, equip:10, mkt:[0.25,0.50],
+  min:70, coatMin:18, coats:2, coatsMin:2, coatsMax:3, furn:true, equip:10, mkt:[0.70,0.45],
+  supplies:['neutral','pad_scrub','matte','pad_finish'],
   desc:'Deep neutral clean and a matte protective finish made for LVT. Keeps the factory look, adds a sacrificial wear layer, and protects seams. No flood stripping, no burnishing, no gloss that makes LVT look like plastic.'},
  {id:'esd', name:'Anti-Static / ESD Finish', sub:'Static-dissipative finish for server rooms, labs, electronics', ico:'esd',
-  rate:220, coats:2, coatsMin:2, coatsMax:3, coatRate:2000, usesESD:true, usesStripper:true, equip:15, minOwn:500, mkt:[0.80,1.50],
+  min:162, coatMin:18, coats:2, coatsMin:2, coatsMax:3, furn:true, equip:15, minOwn:500, mkt:[1.50,0.98],
+  supplies:['strip','neutralizer','pad_strip','pad_doodle','crew:esd','pad_finish'],
   desc:'Strip-out and static-dissipative finish system with resistance verification. Required in server rooms, electronics assembly, labs, and munitions areas. Specialty chemistry runs 3 to 5 times standard finish cost, and testing is part of the job.'},
  {id:'wood', name:'Wood Screen & Recoat', sub:'Commercial waterborne finish, gyms, offices, retail', ico:'wood',
-  rate:320, coats:1, coatsMin:1, coatsMax:2, coatRate:450, usesWood:true, equip:12, mkt:[1.00,2.50],
+  min:120, coatMin:30, coats:1, coatsMin:1, coatsMax:2, furn:true, equip:12, mkt:[2.00,1.10],
+  supplies:['crew:wood'],
   desc:'Abrade the existing finish with a sanding screen, then apply commercial two-part waterborne finish. Renews the wear layer without a full sand-down.'},
  {id:'stone', name:'Marble & Terrazzo Hone / Polish', sub:'Diamond honing, powder polish, crystallization', ico:'stone',
-  rate:80, coats:0, usesStonePads:true, equip:12, minOwn:500, mkt:[2.50,6.00],
+  min:625, coats:0, furn:true, equip:12, minOwn:500, mkt:[5.00,2.75],
+  supplies:['crew:stonePads'],
   desc:'Progressive diamond honing (800, 1500, 3000 grit), then powder polish or crystallization to a uniform natural shine. This is restoration work, not waxing: labor-heavy and priced accordingly.'},
  {id:'seal', name:'Stone, Tile & Grout Sealing', sub:'Penetrating sealer for stone, tile, grout lines', ico:'seal',
-  rate:450, coats:1, coatsMin:1, coatsMax:2, coatRate:900, usesStoneSeal:true, equip:6, mkt:[0.50,1.25],
+  min:71, coatMin:40, coats:1, coatsMin:1, coatsMax:2, furn:true, equip:6, mkt:[1.10,0.60],
+  supplies:['crew:stoneSeal'],
   desc:'Penetrating impregnator that soaks into stone and grout to repel oil and water staining. Reseal every 1 to 3 years by porosity and traffic.'},
  {id:'concrete', name:'Concrete / Epoxy Maintenance Coat', sub:'Clean and re-seal sealed concrete or epoxy', ico:'concrete',
-  rate:400, coats:1, coatsMin:1, coatsMax:2, coatRate:400, usesConcrete:true, equip:10, mkt:[0.30,0.60],
+  min:30, coatMin:18, coats:1, coatsMin:1, coatsMax:2, equip:10, mkt:[0.60,0.33],
+  supplies:['neutral','pad_scrub','concrete'],
   desc:'Deep clean and a fresh guard or seal coat on sealed concrete or epoxy floors. Full grinds, new polish, or full epoxy systems are a separate specialty bid ($3.50-$8.00/SF retail).'}
 ];
-const CONDITIONS=[{k:'good',label:'Good',lab:1,chem:1},{k:'heavy',label:'Heavy Buildup',lab:1.25,chem:1.3},{k:'neglect',label:'Neglected',lab:1.5,chem:1.6}];
+const CONDITIONS=[{k:'good',label:'Good',lab:1,chem:1,mkt:1},{k:'heavy',label:'Heavy Buildup',lab:1.25,chem:1.3,mkt:1.15},{k:'neglect',label:'Neglected',lab:1.5,chem:1.6,mkt:1.3}];
+const FURNITURE=[{k:'none',label:'None / open floor',f:0},{k:'light',label:'Light (lobby, corridors)',f:0.10},{k:'office',label:'Offices (desks, chairs)',f:0.25},{k:'dense',label:'Dense (classrooms, break rooms)',f:0.40}];
 const FREQS=[[1,'One-time / 1x per year'],[2,'2x per year'],[4,'Quarterly'],[6,'Every other month'],[12,'Monthly']];
-const SUP_WAGE=35;      /* working supervisor default $/hr, editable on every service */
+const SUP_WAGE=30;       /* working supervisor $/hr (TJ, Oct 2026) */
 const BURDEN=0.15;       /* crew company payroll burden on wages */
 const SUB_PROFIT=0.07;   /* crew company profit after expenses. Keep inside 5-8% */
+const ALLOWANCE=0.20;    /* personal time, fatigue and delay on top of ISSA task times */
+const SETUP_HRS=0.75;    /* setup and teardown per crew member per visit */
 const VENDOR_CHEM_MARKUP=0.15;
+const SUPPLY_MARGIN=35;  /* minimum City Wide margin on supplies. Nothing is a straight pass-through */
 const MIN_PRICE=300;
+const TIER_LO=1000, TIER_HI=30000;
 
-/* Margin auto-scales by job size: small jobs earn the premium, big jobs stay competitive. 32-40 band. */
+/* Minimum City Wide margin on the cost build-up, by job size. The market rate usually governs above it. */
 function autoMargin(sf){
   if(sf<1000)return 40; if(sf<2500)return 38; if(sf<5000)return 36;
-  if(sf<10000)return 34; if(sf<25000)return 33; return 32;
+  if(sf<10000)return 35; return 35;
 }
-
+/* Market rate per SF slides from the small-floor rate to the large-floor rate on a log scale, so a bigger floor never prices below a smaller one. */
+function tierRate(m,sf){
+  const x=Math.min(1,Math.max(0,Math.log(Math.max(sf,1)/TIER_LO)/Math.log(TIER_HI/TIER_LO)));
+  return m[0]+(m[1]-m[0])*x;
+}
 const ICONS={
  stripwax:'<svg viewBox="0 0 24 24"><rect x="3" y="14" width="18" height="7" rx="1"/><path d="M3 17.5h18M7 14V6a2 2 0 0 1 2-2h1"/><circle cx="15" cy="7" r="3"/><path d="M15 4v-1.5"/></svg>',
  scrub:'<svg viewBox="0 0 24 24"><circle cx="9" cy="17" r="4"/><path d="M9 13V5l6-2v8"/><path d="M4 21h16"/></svg>',
@@ -403,14 +436,45 @@ const ICONS={
  concrete:'<svg viewBox="0 0 24 24"><rect x="3" y="10" width="18" height="10" rx="1"/><path d="M3 15h18M8 10v10M14 10v5M8 15l3 5"/><path d="M6 6h12M9 3h6"/></svg>'
 };
 
+
 /* ---------- STATE ---------- */
 let S={svcOn:{}, inputs:{}, user:localStorage.getItem('cwfloors_user')||''};
-let CHEMS=JSON.parse(JSON.stringify(DEFAULT_CHEMS));
-try{const saved=localStorage.getItem('cwfloors_chems'); if(saved){const p=JSON.parse(saved); Object.keys(CHEMS).forEach(b=>{Object.keys(CHEMS[b]).forEach(k=>{if(p[b]&&p[b][k]&&typeof p[b][k].cost==='number')CHEMS[b][k].cost=p[b][k].cost;});});}}catch(e){}
+let SUPPLY=JSON.parse(JSON.stringify(DEFAULT_SUPPLY));
+try{const saved=localStorage.getItem('cwfloors_supply_v2'); if(saved){const p=JSON.parse(saved); Object.keys(p).forEach(k=>{if(SUPPLY[k]&&typeof p[k]==='number'&&p[k]>0)SUPPLY[k].price=p[k];});}}catch(e){}
+try{const savedM=localStorage.getItem('cwfloors_mkt_v2'); if(savedM){const p=JSON.parse(savedM); SERVICES.forEach(s=>{if(p[s.id]&&p[s.id].length===2)s.mkt=p[s.id];});}}catch(e){}
+const DEFAULT_MKT={}; SERVICES.forEach(s=>{DEFAULT_MKT[s.id]=s.mkt.slice();});
 
 function svcInput(id,field,def){const st=S.inputs[id]||{};return (field in st)?st[field]:def;}
 function setSvc(id,field,val){if(!S.inputs[id])S.inputs[id]={};S.inputs[id][field]=val;recalc();autosaveSoon();}
 function autoCrew(s,st){const q=parseFloat(st&&st.sf)||0;return s.crew1?1:(q>12000?3:2);}
+function brandKey(){const b=$('brand')&&$('brand').value;return BRANDS[b]?b:'diversey';}
+function staplesLink(item){return 'https://www.staplesadvantage.com/search?term='+encodeURIComponent(item);}
+
+/* One supply line. Gallon products charge only the gallons used; pads and pacs charge whole units used. */
+function supplyLine(key,sf,coats,cond){
+  const brand=BRANDS[brandKey()];
+  if(key.indexOf('crew:')===0){
+    const c=CREW_SUPPLIED[key.slice(5)];
+    let cost=0,gal=0;
+    if(c.perSF){cost=sf*c.perSF*cond.chem;}
+    else{gal=sf*Math.max(coats,1)/c.cov; cost=gal*c.costGal;}
+    return {crew:true,key,name:c.name,gal,cost,note:'No City Wide Value Item at Staples. Crew supplies it.'};
+  }
+  const realKey=brand[key]||key;
+  const p=SUPPLY[realKey]; if(!p)return null;
+  let gal=0,units=0,cost=0,buy=0,use='';
+  if(p.units){
+    units=Math.max(1,Math.ceil(sf*(p.unit==='pad'&&coats>1&&realKey==='pad_finish'?coats:1)/p.sfPer*cond.chem));
+    cost=units*p.price/p.units; buy=Math.ceil(units/p.units); use=units+' '+p.unit+(units>1?'s':'');
+  }else{
+    const perGal=p.price/p.gal;
+    if(p.dilution&&p.rtuCov){gal=sf/p.rtuCov*cond.chem/(p.dilution+1);}
+    else if(p.dilution){gal=sf/800*cond.chem/(p.dilution+1);}            /* stripper: 1 RTU gal per 800 SF */
+    else if(p.cov){gal=sf*(key==='finish'||key==='matte'||realKey==='concrete'?Math.max(coats,1):1)/p.cov*(key==='restorer'?cond.chem:1);}
+    gal=Math.ceil(gal*10)/10; cost=gal*perGal; buy=Math.max(1,Math.ceil(gal/p.gal)); use=gal.toFixed(1)+' gal';
+  }
+  return {crew:false,key:realKey,item:p.item,model:p.model,name:p.name,desc:p.desc,pack:p.pack,price:p.price,mkt:p.mkt,gal,units,cost,buy,use};
+}
 
 /* ---------- PRICING ENGINE ---------- */
 function priceService(s){
@@ -418,85 +482,68 @@ function priceService(s){
   const sf=parseFloat(st.sf)||0;
   if(!sf)return null;
   const region=REGIONS[$('region').value];
-  const brand=CHEMS[$('brand').value];
   const cond=CONDITIONS.find(c=>c.k===(st.cond||'good'));
+  const furn=FURNITURE.find(f=>f.k===($('furniture')?$('furniture').value:'light'))||FURNITURE[1];
   const coats=('coats' in st)?st.coats:s.coats;
   const events=parseFloat(st.events)||s.freqDefault||1;
 
-  /* labor */
-  let manHrs=sf/s.rate*cond.lab;
-  if(s.coatRate&&coats>((s.id==='stripwax')?4:s.coats)) manHrs+= (coats-((s.id==='stripwax')?4:s.coats))*sf/s.coatRate;
-  if(s.coatRate&&coats<((s.id==='stripwax')?4:s.coats)) manHrs-= (((s.id==='stripwax')?4:s.coats)-coats)*sf/s.coatRate;
-  manHrs=Math.max(manHrs, 2);
+  /* labor: ISSA task minutes + coats, condition, allowance, furniture, then setup per crew member */
   const crewOv=parseInt(st.crew);
   const crew=(!isNaN(crewOv)&&crewOv>0)?crewOv:autoCrew(s,st);
+  const taskMin=(s.min+(s.coatMin||0)*coats)*cond.lab*(1+ALLOWANCE)*(1+(s.furn?furn.f:0));
+  let manHrs=sf/1000*taskMin/60+SETUP_HRS*crew;
+  manHrs=Math.max(manHrs,2);
   const clockHrs=manHrs/crew;
   const wage=parseFloat(st.wage)||region.wage;
-  const techLabor=manHrs*wage*(1+BURDEN);
-  const supN=Math.max(0,parseInt(st.sup)||0);
+  const supRaw=parseInt(st.sup);
+  const supN=Math.min(crew,(!isNaN(supRaw)&&supRaw>=0)?supRaw:(crew>=2?1:0));
   const supWage=parseFloat(st.supWage)||SUP_WAGE;
   const supHrs=supN*clockHrs;
+  const techHrs=Math.max(0,manHrs-supHrs);
+  const techLabor=techHrs*wage*(1+BURDEN);
   const supCost=supHrs*supWage*(1+BURDEN);
   const laborCost=techLabor+supCost;
 
-  /* chemicals */
-  let chems=[]; let chemCost=0;
-  function addChem(prod,label,gal,perGal,packNote,packGal,packLabel,packPrice){
-    const c=gal*perGal;chemCost+=c;
-    chems.push({prod,label,gal,cost:c,packNote,packGal:packGal||1,packLabel:packLabel||'1 gal',packPrice:packPrice||perGal,buy:Math.max(1,Math.ceil(gal/(packGal||1)))});
-  }
-  function packOf(p,defGal){const m=(p.pack||'').match(/[\d.]+/);return m?parseFloat(m[0]):(defGal||1);}
-  if(s.usesStripper){
-    const rtuGal=sf/800*cond.chem;
-    const concGal=rtuGal/(brand.stripper.dilution||4);
-    const pg=packOf(brand.stripper,5);
-    const perGal=brand.stripper.cost/pg;
-    addChem(brand.stripper.name, brand.stripper.name, Math.ceil(concGal*10)/10, perGal,'concentrate',pg,brand.stripper.pack,brand.stripper.cost);
-  }
-  if(coats>0){
-    let fin=brand.finish, kind='finish';
-    if(s.usesMatte){fin=brand.matte;kind='matte finish';}
-    if(s.usesESD){fin={name:SPECIALTY.esd.name,cost:SPECIALTY.esd.cost,cov:SPECIALTY.esd.cov,pack:'1 gal'};}
-    if(s.usesWood){fin={name:SPECIALTY.wood.name,cost:SPECIALTY.wood.cost,cov:SPECIALTY.wood.cov,pack:'1 gal'};}
-    if(s.usesStoneSeal){fin={name:SPECIALTY.stoneSeal.name,cost:SPECIALTY.stoneSeal.cost,cov:SPECIALTY.stoneSeal.cov,pack:'1 gal'};}
-    if(s.usesConcrete){fin={name:SPECIALTY.concrete.name,cost:SPECIALTY.concrete.cost,cov:SPECIALTY.concrete.covPer,pack:'5 gal'};}
-    const packGal=packOf(fin,1);
-    const perGal=packGal>1?fin.cost/packGal:fin.cost;
-    const gal=sf*coats/(fin.cov||2000);
-    addChem(fin.name, fin.name+' ('+coats+' coats)', Math.ceil(gal*10)/10, perGal, kind, packGal, fin.pack||'1 gal', fin.cost);
-    if(s.usesSealer&&$('brand').value!=='scj'&&(st.sealerCoat!==false)&&brand.sealer.cost>0){
-      const spg=packOf(brand.sealer,5);
-      const sGal=sf/(brand.sealer.cov||2000);
-      addChem(brand.sealer.name, brand.sealer.name+' (1 base coat)', Math.ceil(sGal*10)/10, brand.sealer.cost/spg,'sealer',spg,brand.sealer.pack,brand.sealer.cost);
-    }
-  }
-  if(s.usesSprayBuff){const pg=packOf(brand.sprayBuff,4);const gal=sf/(brand.sprayBuff.cov||25000);addChem(brand.sprayBuff.name,brand.sprayBuff.name,Math.ceil(gal*100)/100,brand.sprayBuff.cost/pg,'restorer',pg,brand.sprayBuff.pack,brand.sprayBuff.cost);}
-  if(s.usesStonePads){chemCost+=sf*SPECIALTY.crystallizer.padPerSF;chems.push({prod:'Diamond pads, powder & crystallizer',label:'Diamond pads, powder & crystallizer wear',gal:0,cost:sf*SPECIALTY.crystallizer.padPerSF,packNote:'consumables',packGal:0,packLabel:'per SF allowance',packPrice:0,buy:0});}
+  /* supplies */
+  const lines=(s.supplies||[]).map(k=>{
+    if(k==='sealer'&&st.sealerCoat===false)return null;
+    return supplyLine(k,sf,coats,cond);
+  }).filter(Boolean);
+  const staples=lines.filter(l=>!l.crew), crewSup=lines.filter(l=>l.crew);
+  const supplyCost=staples.reduce((a,l)=>a+l.cost,0);
+  const crewSupplyCost=crewSup.reduce((a,l)=>a+l.cost,0)*(1+VENDOR_CHEM_MARKUP);
 
   /* equipment */
   const equipCost=clockHrs*(parseFloat(st.equip)||s.equip);
 
   /* vendor build-up */
   const chemProvider=$('chemProvider').value;
-  const vendorChems=chemProvider==='vendor'?chemCost*(1+VENDOR_CHEM_MARKUP):0;
-  const cwChems=chemProvider==='cw'?chemCost:0;
+  const vendorChems=(chemProvider==='vendor'?supplyCost*(1+VENDOR_CHEM_MARKUP):0)+crewSupplyCost;
+  const cwSupply=chemProvider==='cw'?supplyCost:0;
   const inhouse=($('laborBy')&&$('laborBy').value==='inhouse');
-  const vendorBase=(laborCost+equipCost+vendorChems);
+  const vendorBase=laborCost+equipCost+vendorChems;
   const vendorCost=inhouse?vendorBase:vendorBase*(1+SUB_PROFIT);
-  const totalCost=vendorCost+cwChems;
+  const supplySell=cwSupply/(1-SUPPLY_MARGIN/100);
+  const totalCost=vendorCost+cwSupply;
 
-  /* margin + regional multiplier */
+  /* price: market rate vs cost build-up, whichever is higher */
   const ov=parseFloat($('ovMargin').value);
   const svcOv=parseFloat(st.margin);
   const margin=(!isNaN(svcOv)&&svcOv>0)?svcOv:(!isNaN(ov)&&ov>0)?ov:autoMargin(sf);
-  let price=totalCost/(1-margin/100)*region.mult;
-
-  /* per-SF override */
+  const costPlus=vendorCost/(1-margin/100)+supplySell;
+  const coatAdj=s.coatMin?1+0.06*(coats-s.coats):1;
+  const mktRate=tierRate(s.mkt,sf)*region.mult*cond.mkt*coatAdj;
+  const marketPrice=sf*mktRate;
+  let price=Math.max(costPlus,marketPrice);
+  let basis=costPlus>marketPrice?'build':'market';
   const rateOv=parseFloat(st.rateOv);
-  if(!isNaN(rateOv)&&rateOv>0)price=sf*rateOv;
+  if(!isNaN(rateOv)&&rateOv>0){price=sf*rateOv;basis='override';}
+  const effMargin=price>0?(price-totalCost)/price*100:0;
 
-  return {s,sf,cond,coats,events,manHrs,crew,clockHrs,wage,laborCost,techLabor,supN,supWage,supHrs,supCost,chems,chemCost,cwChems,vendorChems,equipCost,vendorBase,vendorCost,inhouse,totalCost,margin,price,perSF:price/sf,
-    mktLow:s.mkt[0]*region.mult,mktHigh:s.mkt[1]*region.mult};
+  return {s,sf,cond,furn,coats,events,manHrs,crew,clockHrs,wage,techHrs,techLabor,supN,supWage,supHrs,supCost,laborCost,
+    lines,staples,crewSup,supplyCost,cwSupply,supplySell,crewSupplyCost,vendorChems,equipCost,vendorBase,vendorCost,inhouse,totalCost,
+    margin,costPlus,mktRate,marketPrice,basis,effMargin,price,perSF:price/sf,
+    mktLow:mktRate*0.9,mktHigh:mktRate*1.1};
 }
 
 function activeResults(){
@@ -515,7 +562,7 @@ function applyMinimums(results){
       if(r.price<floor&&!override){r.finalPrice=floor;minApplied=true;minMsg='Minimum applied: '+money(floor)+' floor on '+r.s.name+'.';}
       else if(r.price<floor&&override){minMsg='Minimum overridden ('+($('minReason').value||'no reason given')+'). Price stands at computed '+money(r.price)+'.';}
     }else{
-      /* multi-service visit: the largest service carries the trip minimum, secondary services price at cost build-up */
+      /* multi-service visit: the largest service carries the trip minimum, secondary services price on their own */
       if(r===sorted[0]&&r.price<floor&&!override){r.finalPrice=floor;minApplied=true;minMsg='Minimum applied to lead service only. Secondary services on the same visit price without a second minimum.';}
     }
   });
@@ -531,29 +578,36 @@ function renderServices(){
     const r=on?priceService(s):null;
     let body='';
     if(on){
+      const crewNow=r?r.crew:autoCrew(s,st);
       body='<div class="svc-grid">'
       +'<div class="field"><label>Square Footage</label><input type="number" value="'+(st.sf||'')+'" placeholder="e.g. 4500" onchange="setSvc(\''+s.id+'\',\'sf\',this.value)"></div>'
       +'<div class="field"><label>Condition</label><select onchange="setSvc(\''+s.id+'\',\'cond\',this.value)">'+CONDITIONS.map(c=>'<option value="'+c.k+'"'+((st.cond||'good')===c.k?' selected':'')+'>'+c.label+'</option>').join('')+'</select></div>'
       +(s.coatsMax?'<div class="field"><label>Coats</label><select onchange="setSvc(\''+s.id+'\',\'coats\',parseInt(this.value))">'+Array.from({length:s.coatsMax-s.coatsMin+1},(_,i)=>{const c=s.coatsMin+i;return '<option value="'+c+'"'+(c===coats?' selected':'')+'>'+c+' coats'+(c===s.coats?' (standard)':'')+'</option>';}).join('')+'</select></div>':'')
+      +(s.supplies.indexOf('sealer')>=0?'<div class="field"><label>Sealer Base Coat</label><select onchange="setSvc(\''+s.id+'\',\'sealerCoat\',this.value===\'yes\')"><option value="yes"'+(st.sealerCoat!==false?' selected':'')+'>Yes, 1 coat</option><option value="no"'+(st.sealerCoat===false?' selected':'')+'>No sealer</option></select></div>':'')
       +'<div class="field"><label>Events / Year</label><select onchange="setSvc(\''+s.id+'\',\'events\',this.value)">'+FREQS.map(f=>'<option value="'+f[0]+'"'+((parseFloat(st.events)||s.freqDefault||1)===f[0]?' selected':'')+'>'+f[1]+'</option>').join('')+'</select></div>'
-      +'<div class="field"><label>Techs on This Job</label><input type="number" min="1" step="1" value="'+(st.crew||'')+'" placeholder="auto: '+autoCrew(s,st)+'" onchange="setSvc(\''+s.id+'\',\'crew\',this.value)"><small>Crew members working this line. Auto-sized from the job. Type over it when the method sets the crew (auto scrubber work always runs 2).</small></div>'
-      +'<div class="field"><label>Supervisors on Site</label><input type="number" min="0" step="1" value="'+(st.sup||'')+'" placeholder="0" onchange="setSvc(\''+s.id+'\',\'sup\',this.value)"><small>On-site supervisor billed for the full visit. Leave 0 for none.</small></div>'
+      +'<div class="field"><label>Crew Size</label><input type="number" min="1" step="1" value="'+(st.crew||'')+'" placeholder="auto: '+autoCrew(s,st)+'" onchange="setSvc(\''+s.id+'\',\'crew\',this.value)"><small>Everyone on the floor, supervisor included. Auto-sized from the job.</small></div>'
+      +'<div class="field"><label>Working Supervisors</label><input type="number" min="0" step="1" value="'+(st.sup===undefined?'':st.sup)+'" placeholder="auto: '+(crewNow>=2?1:0)+'" onchange="setSvc(\''+s.id+'\',\'sup\',this.value)"><small>Crew members paid the supervisor rate. One per crew of 2 or more.</small></div>'
       +'<div class="field"><label>Supervisor $/hr</label><input type="number" step="0.5" value="'+(st.supWage||'')+'" placeholder="'+SUP_WAGE.toFixed(2)+'" onchange="setSvc(\''+s.id+'\',\'supWage\',this.value)"></div>'
-      +'<div class="field"><label>Crew Wage $/hr (region default)</label><input type="number" step="0.5" value="'+(st.wage||'')+'" placeholder="'+REGIONS[$('region').value].wage.toFixed(2)+'" onchange="setSvc(\''+s.id+'\',\'wage\',this.value)"></div>'
-      +'<div class="field"><label>Rate/SF Override</label><input type="number" step="0.01" value="'+(st.rateOv||'')+'" placeholder="auto build-up" onchange="setSvc(\''+s.id+'\',\'rateOv\',this.value)"><small>Set to bypass the build-up. Book rates can run low on small jobs.</small></div>'
-      +'<div class="field"><label>Service Margin % Override</label><input type="number" value="'+(st.margin||'')+'" placeholder="auto '+(st.sf?autoMargin(parseFloat(st.sf)||0):'32-40')+'" onchange="setSvc(\''+s.id+'\',\'margin\',this.value)"></div>'
+      +'<div class="field"><label>Tech Wage $/hr</label><input type="number" step="0.5" value="'+(st.wage||'')+'" placeholder="'+REGIONS[$('region').value].wage.toFixed(2)+'" onchange="setSvc(\''+s.id+'\',\'wage\',this.value)"><small>Floor techs run $20-25.</small></div>'
+      +'<div class="field"><label>Rate/SF Override</label><input type="number" step="0.01" value="'+(st.rateOv||'')+'" placeholder="auto" onchange="setSvc(\''+s.id+'\',\'rateOv\',this.value)"><small>Bypasses market and build-up. Note why.</small></div>'
+      +'<div class="field"><label>Min Margin % Override</label><input type="number" value="'+(st.margin||'')+'" placeholder="auto '+(st.sf?autoMargin(parseFloat(st.sf)||0):'35-40')+'" onchange="setSvc(\''+s.id+'\',\'margin\',this.value)"></div>'
       +'</div>';
       if(r){
-        const flag=r.perSF>=r.mktLow&&r.perSF<=r.mktHigh?'<span class="mktflag ok">inside market range</span>':(r.perSF<r.mktLow?'<span class="mktflag warn">below market, room to hold price</span>':'<span class="mktflag warn">above market, check inputs or expect pushback</span>');
+        const basisTxt=r.basis==='market'?'<span class="mktflag ok">market rate governs</span>':(r.basis==='build'?'<span class="mktflag warn">cost build-up is above market. Check hours, coats and condition</span>':'<span class="mktflag warn">manual rate override</span>');
         body+='<div class="buildup">'
-        +'<div class="bl"><span>Crew labor: '+r.manHrs.toFixed(1)+' man-hrs ('+r.crew+' crew x '+r.clockHrs.toFixed(1)+' hrs) @ $'+r.wage.toFixed(2)+' + '+(BURDEN*100)+'% burden</span><b>'+money(r.techLabor)+'</b></div>'
-        +(r.supN?'<div class="bl"><span>Supervisor: '+r.supN+' x '+r.clockHrs.toFixed(1)+' hrs @ $'+r.supWage.toFixed(2)+' + '+(BURDEN*100)+'% burden</span><b>'+money(r.supCost)+'</b></div>':'')
-        +r.chems.map(c=>'<div class="bl"><span>'+c.label+(c.gal?' ('+c.gal+' gal '+c.packNote+')':'')+'</span><b>'+money(c.cost)+'</b></div>').join('')
+        +'<div class="bl"><span>Crew hours: '+r.manHrs.toFixed(1)+' man-hrs ('+r.crew+' crew x '+r.clockHrs.toFixed(1)+' hrs on site). ISSA task time +'+(ALLOWANCE*100)+'% allowance'+(r.s.furn&&r.furn.f?' +'+(r.furn.f*100)+'% furniture':'')+' + '+SETUP_HRS+' hr setup per person</span><b></b></div>'
+        +'<div class="bl"><span>Techs: '+r.techHrs.toFixed(1)+' hrs @ $'+r.wage.toFixed(2)+' + '+(BURDEN*100)+'% burden</span><b>'+money(r.techLabor)+'</b></div>'
+        +(r.supN?'<div class="bl"><span>Working supervisor: '+r.supHrs.toFixed(1)+' hrs @ $'+r.supWage.toFixed(2)+' + '+(BURDEN*100)+'% burden</span><b>'+money(r.supCost)+'</b></div>':'')
+        +r.crewSup.map(c=>'<div class="bl"><span>'+c.name+(c.gal?' ('+c.gal.toFixed(1)+' gal)':'')+' +'+(VENDOR_CHEM_MARKUP*100)+'%</span><b>'+money(c.cost*(1+VENDOR_CHEM_MARKUP))+'</b></div>').join('')
         +'<div class="bl"><span>Equipment fee ('+r.clockHrs.toFixed(1)+' hrs @ $'+((S.inputs[s.id]&&S.inputs[s.id].equip)||s.equip)+'/hr)</span><b>'+money(r.equipCost)+'</b></div>'
         +(r.inhouse?'':'<div class="bl"><span>Crew company profit ('+(SUB_PROFIT*100).toFixed(0)+'%, hold 5-8%)</span><b>'+money(r.vendorCost-r.vendorBase)+'</b></div>')
-        +'<div class="bl tot"><span>'+(r.inhouse?'In-house crew cost':'We pay the crew')+(r.cwChems?' (City Wide supplies chemicals: '+money(r.cwChems)+')':'')+'</span><b>'+money(r.vendorCost)+'</b></div>'
-        +'<div class="bl tot" style="color:var(--cw-red)"><span>Client price @ '+r.margin+'% margin x '+REGIONS[$('region').value].mult.toFixed(2)+' regional</span><b>'+money(r.price)+' ('+money2(r.perSF)+'/SF)</b></div>'
-        +'<div class="bl mkt"><span>2026 market check: '+money2(r.mktLow)+'-'+money2(r.mktHigh)+'/SF here. '+flag+'</span></div>'
+        +'<div class="bl tot"><span>'+(r.inhouse?'In-house crew cost':'Vendor pay')+' ('+money2(r.vendorCost/r.sf)+'/SF)</span><b>'+money(r.vendorCost)+'</b></div>'
+        +(r.cwSupply?'<div class="bl"><span>Staples supplies at City Wide cost '+money(r.cwSupply)+', billed at '+SUPPLY_MARGIN+'% margin</span><b>'+money(r.supplySell)+'</b></div>':'')
+        +(r.vendorChems&&$('chemProvider').value==='vendor'?'<div class="bl"><span>Crew provides the Staples-list supplies (their cost +'+(VENDOR_CHEM_MARKUP*100)+'%, inside vendor pay)</span><b></b></div>':'')
+        +'<div class="bl"><span>Cost build-up @ '+r.margin+'% minimum margin</span><b>'+money(r.costPlus)+'</b></div>'
+        +'<div class="bl"><span>Market rate: '+money2(r.mktRate)+'/SF x '+r.sf.toLocaleString()+' SF ('+REGIONS[$('region').value].label+(r.cond.mkt>1?', '+r.cond.label.toLowerCase():'')+')</span><b>'+money(r.marketPrice)+'</b></div>'
+        +'<div class="bl tot" style="color:var(--cw-red)"><span>Client price ('+money2(r.perSF)+'/SF). City Wide margin '+r.effMargin.toFixed(0)+'%</span><b>'+money(r.price)+'</b></div>'
+        +'<div class="bl mkt"><span>'+basisTxt+'</span></div>'
         +'</div>';
       }
       body+=howTo(s);
@@ -588,29 +642,43 @@ function howTo(s){
 }
 
 
-/* ---------- CHEMICAL SHOPPING LIST ---------- */
+
+/* ---------- SUPPLY SHOPPING LIST (Staples Advantage, City Wide Value Items) ---------- */
+function aggregateSupplies(results){
+  const agg={}, crew={};
+  results.forEach(r=>{
+    r.staples.forEach(l=>{
+      if(!agg[l.key])agg[l.key]={...l,gal:0,units:0,cost:0};
+      agg[l.key].gal+=l.gal; agg[l.key].units+=l.units; agg[l.key].cost+=l.cost;
+    });
+    r.crewSup.forEach(l=>{if(!crew[l.name])crew[l.name]={name:l.name,cost:0};crew[l.name].cost+=l.cost;});
+  });
+  const items=Object.values(agg).map(it=>{
+    const p=SUPPLY[it.key];
+    it.buy=p.units?Math.max(1,Math.ceil(it.units/p.units)):Math.max(1,Math.ceil(it.gal/p.gal));
+    it.use=p.units?(it.units+' '+p.unit+(it.units>1?'s':'')):(it.gal.toFixed(1)+' gal');
+    return it;
+  });
+  return {items,crew:Object.values(crew)};
+}
 function renderShopping(results){
-  const agg={};
-  results.forEach(r=>{(r.chems||[]).forEach(c=>{
-    if(!agg[c.prod])agg[c.prod]={prod:c.prod,gal:0,packGal:c.packGal,packLabel:c.packLabel,packPrice:c.packPrice,note:c.packNote,consumable:c.buy===0,cost:0};
-    agg[c.prod].gal+=c.gal; agg[c.prod].cost+=c.cost;
-  });});
-  const items=Object.values(agg);
-  $('shopCard').style.display=items.length?'':'none';
-  if(!items.length)return;
-  $('shopList').innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px">'
-  +'<tr><th style="text-align:left;padding:6px 8px;background:var(--cw-black);color:#fff">Product</th><th style="text-align:right;padding:6px 8px;background:var(--cw-black);color:#fff">Needed</th><th style="text-align:right;padding:6px 8px;background:var(--cw-black);color:#fff">Buy</th><th style="text-align:right;padding:6px 8px;background:var(--cw-black);color:#fff">Unit Price</th><th style="text-align:right;padding:6px 8px;background:var(--cw-black);color:#fff">Purchase Total</th></tr>'
-  +items.map(it=>{
-    if(it.consumable)return '<tr><td style="padding:6px 8px;border-bottom:1px solid var(--cw-border)">'+it.prod+'</td><td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)">allowance</td><td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)">as needed</td><td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)"></td><td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)">'+money(it.cost)+'</td></tr>';
-    const buy=Math.max(1,Math.ceil(it.gal/(it.packGal||1)));
-    return '<tr><td style="padding:6px 8px;border-bottom:1px solid var(--cw-border)">'+it.prod+'</td>'
-    +'<td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)">'+it.gal.toFixed(1)+' gal</td>'
-    +'<td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)"><b>'+buy+' x '+it.packLabel+'</b></td>'
-    +'<td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)">'+money2(it.packPrice)+'</td>'
-    +'<td style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--cw-border)"><b>'+money(buy*it.packPrice)+'</b></td></tr>';
-  }).join('')
-  +'</table>'
-  +'<p style="font-size:10.5px;color:var(--cw-grey);margin-top:8px">Needed = coverage math for this job. Buy = whole pails and cases rounded up. Build-up cost charges only the gallons used; leftover product stays in our inventory for the next job.</p>';
+  const {items,crew}=aggregateSupplies(results);
+  $('shopCard').style.display=(items.length||crew.length)?'':'none';
+  if(!items.length&&!crew.length)return;
+  const th='padding:6px 8px;background:var(--cw-black);color:#fff;text-align:left';
+  const td='padding:6px 8px;border-bottom:1px solid var(--cw-border);vertical-align:top';
+  $('shopList').innerHTML='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:640px">'
+  +'<tr><th style="'+th+'">Staples Item #</th><th style="'+th+'">Item</th><th style="'+th+'">Pack</th><th style="'+th+';text-align:right">CW Price</th><th style="'+th+';text-align:right">Used</th><th style="'+th+';text-align:right">Buy</th><th style="'+th+';text-align:right">Order Total</th></tr>'
+  +items.map(it=>'<tr><td style="'+td+'"><a href="'+staplesLink(it.item)+'" target="_blank" rel="noopener" style="color:var(--cw-red);font-weight:700">'+it.item+'</a><br><span style="color:var(--cw-grey);font-size:10.5px">Model '+it.model+'</span></td>'
+    +'<td style="'+td+'"><b>'+it.name+'</b><br><span style="color:var(--cw-grey);font-size:11px">'+it.desc+'</span></td>'
+    +'<td style="'+td+'">'+it.pack+'</td>'
+    +'<td style="'+td+';text-align:right">'+money2(it.price)+'<br><span style="color:var(--cw-grey);font-size:10.5px;text-decoration:line-through">'+money2(it.mkt)+'</span></td>'
+    +'<td style="'+td+';text-align:right">'+it.use+'</td>'
+    +'<td style="'+td+';text-align:right"><b>'+it.buy+'</b></td>'
+    +'<td style="'+td+';text-align:right"><b>'+money(it.buy*it.price)+'</b></td></tr>').join('')
+  +crew.map(c=>'<tr><td style="'+td+'">Crew supplied</td><td style="'+td+'"><b>'+c.name+'</b><br><span style="color:var(--cw-grey);font-size:11px">No City Wide Value Item at Staples. Priced at the crew\'s cost +'+(VENDOR_CHEM_MARKUP*100)+'% inside vendor pay.</span></td><td style="'+td+'"></td><td style="'+td+'"></td><td style="'+td+';text-align:right">allowance</td><td style="'+td+'"></td><td style="'+td+';text-align:right">'+money(c.cost)+'</td></tr>').join('')
+  +'</table></div>'
+  +'<p style="font-size:10.5px;color:var(--cw-grey);margin-top:8px">City Wide Value Item prices from our Staples Advantage account, pulled Oct 27 2026 (struck-through number is the Staples market price). Item numbers link to Staples. The quote charges only what this job uses, billed at a '+SUPPLY_MARGIN+'% minimum margin. Leftover product stays in stock for the next job.</p>';
 }
 /* ---------- SUMMARY ---------- */
 function recalc(){
@@ -623,9 +691,10 @@ function recalc(){
   const lines=results.map(r=>{
     const perEvent=r.finalPrice;
     const annual=perEvent*r.events;
+    const m=perEvent>0?(perEvent-r.totalCost)/perEvent*100:0;
     return '<div class="sline cat"><span class="n">'+r.s.name+' ('+r.sf.toLocaleString()+' SF'+(r.coats?', '+r.coats+' coats':'')+')</span><span>'+money(perEvent)+'</span></div>'
     +(r.events>1?'<div class="sline sub"><span class="n">'+r.events+'x per year = '+money(annual)+'/yr ('+money(annual/12)+'/mo accrual)</span></div>':'')
-    +(showInt?'<div class="sline sub"><span class="n">crew '+money(r.vendorCost)+(r.cwChems?' + our chems '+money(r.cwChems):'')+' | margin '+r.margin+'% | '+money2(r.finalPrice/r.sf)+'/SF</span></div>':'');
+    +(showInt?'<div class="sline sub"><span class="n">vendor '+money(r.vendorCost)+' ('+r.manHrs.toFixed(1)+' hrs)'+(r.cwSupply?' + supplies '+money(r.cwSupply):'')+' | margin '+m.toFixed(0)+'% | '+money2(r.finalPrice/r.sf)+'/SF | '+(r.basis==='market'?'market':r.basis==='build'?'build-up':'override')+'</span></div>':'');
   }).join('');
   $('sumLines').innerHTML=lines||'<div style="font-size:12px;color:#bdbbb8">Turn on services to build the quote.</div>';
   const total=results.reduce((a,r)=>a+r.finalPrice,0);
@@ -638,10 +707,11 @@ function recalc(){
   renderShopping(results);
   $('minRow').style.display=minMsg?'flex':'none';
   $('minMsg').textContent=minMsg;
+  const totCost=results.reduce((a,r)=>a+r.totalCost,0);
+  const eff=total>0?Math.round((total-totCost)/total*100):null;
   const ov=parseFloat($('ovMargin').value);
-  const shown=(!isNaN(ov)&&ov>0)?ov:(results.length?Math.round(results.reduce((a,r)=>a+r.margin,0)/results.length):null);
-  $('marginPill').textContent=shown?shown+'%'+((!isNaN(ov)&&ov>0)?' override':' auto by size'):'32-40% auto';
-  $('marginPill').className='marginpill'+(shown&&shown<32?' hot':'');
+  $('marginPill').textContent=eff!==null?eff+'% actual'+((!isNaN(ov)&&ov>0)?' (min '+ov+'%)':''):'market rate';
+  $('marginPill').className='marginpill'+(eff!==null&&eff<35?' hot':'');
 }
 /* ---------- EDUCATION TABS ---------- */
 function renderFloors(){
@@ -653,7 +723,7 @@ function renderFloors(){
   +'<tr><td><b>LVT / LVP</b> (luxury vinyl plank or tile, wood-look)</td><td><span class="tag tag-care">Optional matte only</span></td><td>LVT Clean &amp; Matte Finish, 2-3 thin coats</td><td>No flood stripping (seams), no burnishing textured planks, no gloss. Check the manufacturer care sheet before promising anything.</td></tr>'
   +'<tr><td><b>Sheet vinyl</b></td><td><span class="tag tag-yes">Yes</span></td><td>Same as VCT, gentler strip chemistry</td><td>Heat-welded seams are fine; loose-laid perimeter can wick stripper.</td></tr>'
   +'<tr><td><b>Linoleum</b> (real linseed product)</td><td><span class="tag tag-care">Careful</span></td><td>Scrub &amp; Recoat preferred, neutral pH</td><td>High pH strippers burn linoleum (white blooming). Use linoleum-safe stripper only, never let it dwell long.</td></tr>'
-  +'<tr><td><b>Rubber</b> (gyms, stairwells)</td><td><span class="tag tag-care">Sometimes</span></td><td>Scrub, then rubber-safe finish if the client wants sheen</td><td>Solvents and butyl strippers swell rubber. SCJP stripper is rubber-safe; Pro Strip Ultra is not.</td></tr>'
+  +'<tr><td><b>Rubber</b> (gyms, stairwells)</td><td><span class="tag tag-care">Sometimes</span></td><td>Scrub, then rubber-safe finish if the client wants sheen</td><td>Solvents and butyl strippers swell rubber. Check the stripper label for rubber before you use it.</td></tr>'
   +'<tr><td><b>Anti-static / ESD vinyl</b> (conductive tile in server rooms, labs)</td><td><span class="tag tag-care">ESD finish only</span></td><td>Anti-Static / ESD Finish service</td><td>Standard finish insulates the floor and destroys its purpose. Use dissipative finish and test resistance. Ask the client for their spec.</td></tr>'
   +'<tr><td><b>Ceramic / porcelain tile</b></td><td><span class="tag tag-no">No wax</span></td><td>Machine scrub + Stone, Tile &amp; Grout Sealing (penetrating)</td><td>Finish on porcelain peels and looks terrible. Seal the grout, not the tile face.</td></tr>'
   +'<tr><td><b>Marble</b></td><td><span class="tag tag-no">Never wax</span></td><td>Hone &amp; Polish + penetrating sealer + crystallization maintenance</td><td>Acid etches marble instantly (even cleaners). Wax on marble is a maintenance trap and reads as amateur work.</td></tr>'
@@ -663,33 +733,32 @@ function renderFloors(){
   +'<tr><td><b>Sealed concrete / polished concrete</b></td><td><span class="tag tag-care">Guard coats</span></td><td>Concrete / Epoxy Maintenance Coat, burnish guard to heat-set</td><td>Full grinds and new polish are a specialty bid ($3.50-8.00/SF retail). Densifier vs guard coat are different products.</td></tr>'
   +'<tr><td><b>Epoxy</b> (warehouse, kitchens, hangars)</td><td><span class="tag tag-care">Re-topcoat</span></td><td>Maintenance clean + re-topcoat urethane ($1.50-3.00/SF retail)</td><td>Check for delamination and moisture issues before quoting a topcoat over failing epoxy.</td></tr>'
   +'</table>'
-  +'<h2>Reading Job Size &amp; Margin</h2>'
-  +'<p>The tool auto-scales City Wide margin by job size: under 1,000 SF earns 40%, sliding to 32% at 25,000+ SF. Small jobs carry the premium because setup, travel, and minimums dominate. Big open floorplates are competitive bids and 32% is the floor. The override box is there for a reason: use it when you know something the tool does not, and note why.</p>'
-  +'<h2>The $300 Minimum &amp; When to Override It</h2>'
-  +'<p>Every stand-alone floor event carries a $300 minimum (ESD and stone carry $500). On a multi-service visit the tool automatically puts the trip minimum on the lead service only, so a small add-on like a 400 SF spray buff rides along at its build-up price. Use the manual override when we are bundling floors into a bigger janitorial bid or there is a specific relationship reason, and type the reason so it prints on the internal sheet.</p>';
+  +'<h2>How the Price Is Set</h2>'
+  +'<p>The client price is the market rate for that size of floor, or the cost build-up at City Wide margin, whichever is higher. Strip and wax runs $1.00/SF at 1,000 SF or less and slides to $0.65/SF at 30,000 SF or more in Las Vegas. Heavy buildup adds 15% and a neglected floor adds 30%, because the market charges for it. Reno, Carson, TRIC and the Arizona border add their regional premium on top.</p>'
+  +'<p>Vendor pay comes from real crew hours, not from the price. The FSM can read it as hours times the normal rate. When the build-up beats the market rate, the card says so: check the hours, coats and condition before you send it.</p>'
+  +'<h2>Minimums &amp; When to Override</h2>'
+  +'<p>Strip and wax carries a $450 minimum. Burnish and spray buff carry $150. ESD and stone carry $500. Everything else carries $300. On a multi-service visit the minimum sits on the lead service only. Use the manual override when floors are bundled into a bigger janitorial bid or there is a specific relationship reason, and type the reason so it prints on the internal sheet.</p>';
 }
 
 function renderProcess(){
   $('processContent').innerHTML=
   '<h2>Selling the Program, Not the Event</h2>'
   +'<p>One strip &amp; wax is an event. The money and the retention are in the program: strip once, then scrub &amp; recoat 2-4x per year with monthly or quarterly burnishing. The floor never fully fails, the client budget is predictable, and the next full strip moves years out. Quote the program with the Events / Year selector on each service and show the client the monthly accrual.</p>'
-  +'<h2>Production Reality Check (2-person crew)</h2>'
-  +'<table><tr><th>Task</th><th>Honest Rate</th><th>Notes</th></tr>'
-  +'<tr><td>Full strip &amp; wax, 4 coats</td><td>2,500-2,800 SF per night</td><td>About 200 SF per man-hour all-in. ISSA machine pass rates are faster but ignore edges, rinse, and dry time.</td></tr>'
-  +'<tr><td>Scrub &amp; recoat</td><td>1,000-2,000 SF per man-hour</td><td>Auto scrubber pace.</td></tr>'
-  +'<tr><td>Apply finish, per coat</td><td>1,600-2,000 SF/hr mop, 6,000+ backpack applicator</td><td>30-45 min dry between coats. Humidity and airflow move this.</td></tr>'
-  +'<tr><td>Burnish</td><td>10,000-15,000 SF/hr electric, 20,000-30,000 propane</td><td>One person. Minimums drive small-job price, not labor.</td></tr>'
-  +'<tr><td>Stone honing</td><td>300-600 SF per tech per day</td><td>Restoration is slow. Price it like the craft it is.</td></tr></table>'
-  +'<h2>Chemical Coverage Math the Tool Uses</h2>'
-  +'<ul><li>Floor finish: plan 2,000 SF per gallon per coat (manufacturers claim 3,000+; real crews get 2,000).</li>'
-  +'<li>Stripper: 1 RTU gallon covers about 800 SF; divide by dilution for concentrate. Heavy buildup adds 30-60%.</li>'
-  +'<li>Sealer: 2,000 SF/gal on VCT. Penetrating stone sealers swing 500-4,000 SF/gal with porosity.</li>'
-  +'<li>ESD finish: 2,000 SF/gal, 2 coats standard.</li>'
-  +'<li>Wood waterborne: 350-500 SF/gal.</li></ul>'
+  +'<h2>Crew Hours the Tool Uses (ISSA based)</h2>'
+  +'<table><tr><th>Task</th><th>Minutes per 1,000 SF</th><th>Source</th></tr>'
+  +'<tr><td>Strip, wet pickup, rinse, touch-up (20" 175 RPM)</td><td>147</td><td>ISSA 612 via CMM: strip 80, pickup 25, rinse 30, touch-up 12</td></tr>'
+  +'<tr><td>Apply finish, per coat</td><td>18</td><td>ISSA flat mop 5 to string mop 36. 18 allows for edges</td></tr>'
+  +'<tr><td>Scrub before recoat, with pickup</td><td>70</td><td>No ISSA line. Built from the strip rows without the dwell</td></tr>'
+  +'<tr><td>Spray buff plus dust mop (20" 175 RPM)</td><td>38</td><td>ISSA 540: spray buff 30</td></tr>'
+  +'<tr><td>Burnish plus dust mop (20" electric 2000 RPM)</td><td>15</td><td>ISSA 540: burnish 7.2</td></tr>'
+  +'<tr><td>Allowance on all task time</td><td>+20%</td><td>Personal time, fatigue and delay (APPA / ISSA 612 practice)</td></tr>'
+  +'<tr><td>Setup and teardown</td><td>0.75 hr per person</td><td>ISSA times assume the worker is already set up</td></tr>'
+  +'<tr><td>Furniture moving</td><td>+0 / 10 / 25 / 40%</td><td>Pick the level on the top bar. No published standard exists</td></tr></table>'
+  +'<p>A 2-person strip and wax with light furniture works out to about 200 SF per man-hour, which matches what good crews report: 2,500-2,800 SF per night. Dry time between coats is elapsed time, not labor, so it is not billed as hours.</p>'
   +'<h2>Paying the Crew Right</h2>'
-  +'<p>The build-up pays the crew company for wages (regional floor tech market rate), 15% payroll burden, an equipment fee for machine wear, and 5-8% profit after expenses. That is a fair deal that keeps good floor crews answering our calls, without pricing us out of the bid. If a crew quote comes in far above the build-up, the tool shows you exactly which line to negotiate. If it comes in far below, ask what they are skipping: usually coats, rinse, or insurance.</p>'
-  +'<h2>Chemicals: City Wide Tolls or Crew Provides</h2>'
-  +'<p>Default is City Wide provides the chemicals: we buy at contract pricing (Staples Advantage and Brady), we control the brand and the coat count, and we keep that spread. Switch to Crew Provides when a specialist runs their own system (stone, wood, ESD); the tool then adds 15% procurement markup to their cost side.</p>'
+  +'<p>Floor techs are paid $20-25 an hour and the working supervisor $30. One crew member is the supervisor on every crew of two or more. The build-up adds 15% payroll burden, an equipment fee for machine wear, and 5-8% crew company profit. If a crew quote comes in far above the build-up, the card shows which line to negotiate. If it comes in far below, ask what they are skipping: usually coats, rinse, or insurance.</p>'
+  +'<h2>Supplies: Staples City Wide Value Items Only</h2>'
+  +'<p>Every supply line on this tool is a Staples Advantage item marked City Wide Facility Value Item. The shopping list shows the Staples item number, the model, the pack and our price, and links straight to the item. Supplies are always billed at margin, never passed through at cost. Wood finish, ESD finish, stone sealer and stone pads have no City Wide Value Item, so the crew supplies those and the tool adds their cost plus 15%.</p>'
   +'<h2>Quality Gates Before You Leave the Site</h2>'
   +'<ol><li>Sight down the floor against a light source: no streaks, swirl marks, or missed strips at edges.</li>'
   +'<li>Tape test on a corner: finish should not peel with blue tape after cure.</li>'
@@ -699,37 +768,46 @@ function renderProcess(){
 }
 
 function renderRates(){
-  const b=$('brand')?$('brand').value:'diversey';
+  const grp={};Object.keys(SUPPLY).forEach(k=>{const p=SUPPLY[k];(grp[p.grp]=grp[p.grp]||[]).push(k);});
   let rows='';
-  Object.keys(CHEMS).forEach(bk=>{
-    const brand=CHEMS[bk];
-    Object.keys(brand).forEach(k=>{
-      if(k==='label')return;
-      const c=brand[k];
-      rows+='<tr><td>'+brand.label+'</td><td>'+c.name+(c.note?'<br><span style="color:var(--cw-grey);font-size:11px">'+c.note+'</span>':'')+'</td><td>'+(c.pack||'')+'</td>'
-      +'<td><input type="number" step="0.01" value="'+c.cost.toFixed(2)+'" onchange="setChem(\''+bk+'\',\''+k+'\',this.value)"></td>'
-      +'<td>'+(c.cov?c.cov.toLocaleString()+' SF/gal':(c.dilution?'1:'+c.dilution+' dilution':''))+'</td></tr>';
+  Object.keys(grp).forEach(g=>{
+    rows+='<tr><td colspan="6" style="background:var(--cw-light);font-weight:700">'+g+'</td></tr>';
+    grp[g].forEach(k=>{const p=SUPPLY[k];
+      rows+='<tr><td><a href="'+staplesLink(p.item)+'" target="_blank" rel="noopener">'+p.item+'</a><br><span style="color:var(--cw-grey);font-size:11px">'+p.model+'</span></td><td><b>'+p.name+'</b><br><span style="color:var(--cw-grey);font-size:11px">'+p.desc+'</span></td><td>'+p.pack+'</td>'
+      +'<td><input type="number" step="0.01" value="'+p.price.toFixed(2)+'" onchange="setSupply(\''+k+'\',this.value)"></td><td>'+money2(p.mkt)+'</td>'
+      +'<td>'+(p.cov?p.cov.toLocaleString()+' SF/gal per coat':(p.dilution?'1:'+p.dilution+(p.rtuCov?', '+p.rtuCov+' SF per RTU gal':''):(p.sfPer?p.sfPer.toLocaleString()+' SF per '+p.unit:'')))+'</td></tr>';
     });
   });
   $('ratesContent').innerHTML=
-  '<h2>Chemical Rate Book</h2>'
-  +'<p>Costs below seed every quote. City Wide contract prices came from our Staples Advantage account (July 2026); Spartan seeds are distributor street pricing until Brady account prices are pulled. Edit any cost and it saves to this browser and flows into every build-up.</p>'
-  +'<table><tr><th>Program</th><th>Product</th><th>Pack</th><th>Our Cost $</th><th>Coverage</th></tr>'+rows+'</table>'
+  '<h2>Supply Rate Book</h2>'
+  +'<p>Staples Advantage City Wide Facility Value Items only, pulled Oct 27 2026. If Staples changes a price, type the new price here: it saves to this browser and flows into every quote. Coverage and dilution are planning numbers; the label wins.</p>'
+  +'<div style="overflow-x:auto"><table><tr><th>Staples Item #</th><th>Item</th><th>Pack</th><th>CW Price $</th><th>Market</th><th>Coverage</th></tr>'+rows+'</table></div>'
+  +'<p style="margin-top:8px"><button class="btn btn-ghost" style="flex:none" onclick="resetSupply()">Reset to Oct 27 2026 prices</button></p>'
+  +'<h2>Market Rates (Las Vegas, per SF)</h2>'
+  +'<p>The price slides between these two numbers by floor size. Edit them when the market moves. They save to this browser.</p>'
+  +'<table><tr><th>Service</th><th>1,000 SF or less</th><th>30,000 SF or more</th><th>Minimum</th></tr>'
+  +SERVICES.map(s=>'<tr><td>'+s.name+'</td><td><input type="number" step="0.01" value="'+s.mkt[0].toFixed(2)+'" onchange="setMkt(\''+s.id+'\',0,this.value)"></td><td><input type="number" step="0.01" value="'+s.mkt[1].toFixed(2)+'" onchange="setMkt(\''+s.id+'\',1,this.value)"></td><td>'+money(s.minOwn||MIN_PRICE)+'</td></tr>').join('')
+  +'</table>'
+  +'<p style="margin-top:8px"><button class="btn btn-ghost" style="flex:none" onclick="resetMkt()">Reset market rates</button></p>'
   +'<h2>Regional Crew Wages &amp; Multipliers</h2>'
-  +'<table><tr><th>Region</th><th>Floor Tech $/hr</th><th>Price Multiplier</th><th>Why</th></tr>'
-  +Object.keys(REGIONS).map(k=>{const r=REGIONS[k];return '<tr><td>'+r.label+'</td><td>$'+r.wage.toFixed(2)+'</td><td>x'+r.mult.toFixed(2)+'</td><td>'+r.note+'</td></tr>';}).join('')
+  +'<table><tr><th>Region</th><th>Floor Tech $/hr</th><th>Supervisor $/hr</th><th>Market Multiplier</th><th>Why</th></tr>'
+  +Object.keys(REGIONS).map(k=>{const r=REGIONS[k];return '<tr><td>'+r.label+'</td><td>$'+r.wage.toFixed(2)+'</td><td>$'+SUP_WAGE.toFixed(2)+'</td><td>x'+r.mult.toFixed(2)+'</td><td>'+r.note+'</td></tr>';}).join('')
   +'</table>'
   +'<h2>Structure Constants</h2>'
   +'<table><tr><th>Item</th><th>Value</th><th>Rule</th></tr>'
+  +'<tr><td>Allowance on ISSA task time</td><td>'+(ALLOWANCE*100)+'%</td><td>Personal time, fatigue, delay.</td></tr>'
+  +'<tr><td>Setup and teardown</td><td>'+SETUP_HRS+' hr per person</td><td>Every visit.</td></tr>'
   +'<tr><td>Crew payroll burden</td><td>'+(BURDEN*100)+'%</td><td>On top of wages.</td></tr>'
   +'<tr><td>Crew company profit</td><td>'+(SUB_PROFIT*100)+'%</td><td>After their expenses. Hold between 5% and 8%.</td></tr>'
-  +'<tr><td>City Wide margin</td><td>32-40%</td><td>Auto by job size. Override with a reason.</td></tr>'
-  +'<tr><td>Minimum per event</td><td>$300 ($500 ESD &amp; stone)</td><td>Lead service only on multi-service visits. Manual override available.</td></tr>'
-  +'<tr><td>Crew-provided chemical markup</td><td>'+(VENDOR_CHEM_MARKUP*100)+'%</td><td>Their procurement cost.</td></tr></table>';
+  +'<tr><td>Minimum City Wide margin</td><td>35-40%</td><td>On the cost build-up, by job size. The market rate usually sits above it.</td></tr>'
+  +'<tr><td>Supply margin</td><td>'+SUPPLY_MARGIN+'% minimum</td><td>No supply is a pass-through.</td></tr>'
+  +'<tr><td>Crew-supplied product markup</td><td>'+(VENDOR_CHEM_MARKUP*100)+'%</td><td>Their procurement cost.</td></tr></table>';
 }
-function setChem(bk,k,v){CHEMS[bk][k].cost=parseFloat(v)||CHEMS[bk][k].cost;
-  const slim={};Object.keys(CHEMS).forEach(b=>{slim[b]={};Object.keys(CHEMS[b]).forEach(kk=>{if(kk!=='label')slim[b][kk]={cost:CHEMS[b][kk].cost};});});
-  localStorage.setItem('cwfloors_chems',JSON.stringify(slim));recalc();}
+function saveSupply(){const slim={};Object.keys(SUPPLY).forEach(k=>{if(SUPPLY[k].price!==DEFAULT_SUPPLY[k].price)slim[k]=SUPPLY[k].price;});try{localStorage.setItem('cwfloors_supply_v2',JSON.stringify(slim));}catch(e){}}
+function setSupply(k,v){const n=parseFloat(v);if(n>0)SUPPLY[k].price=n;saveSupply();recalc();}
+function resetSupply(){SUPPLY=JSON.parse(JSON.stringify(DEFAULT_SUPPLY));try{localStorage.removeItem('cwfloors_supply_v2');}catch(e){}renderRates();recalc();}
+function setMkt(id,i,v){const s=SERVICES.find(x=>x.id===id);const n=parseFloat(v);if(s&&n>0)s.mkt[i]=n;const o={};SERVICES.forEach(x=>{o[x.id]=x.mkt;});try{localStorage.setItem('cwfloors_mkt_v2',JSON.stringify(o));}catch(e){}recalc();}
+function resetMkt(){SERVICES.forEach(s=>{s.mkt=DEFAULT_MKT[s.id].slice();});try{localStorage.removeItem('cwfloors_mkt_v2');}catch(e){}renderRates();recalc();}
 
 /* ---------- TABS ---------- */
 function showTab(t){
@@ -751,29 +829,33 @@ function printQuote(internal){
     h+='<div class="p-svc"><span class="p-price">'+money(r.finalPrice)+(r.events>1?' per event':'')+'</span><h4>'+r.s.name+' | '+r.sf.toLocaleString()+' SF'+(r.coats?' | '+r.coats+' coats':'')+(r.events>1?' | '+r.events+'x per year':'')+'</h4><p>'+r.s.desc+'</p>';
     if(r.events>1)h+='<p><b>Annual: '+money(r.finalPrice*r.events)+' ('+money(r.finalPrice*r.events/12)+'/month)</b></p>';
     if(internal){
-      h+='<table class="p-table"><tr><th>Cost Line</th><th>Amount</th></tr>'
-      +'<tr><td>Crew labor '+r.manHrs.toFixed(1)+' man-hrs @ $'+r.wage.toFixed(2)+' +'+(BURDEN*100)+'% burden</td><td>'+money(r.techLabor)+'</td></tr>'
-      +(r.supN?'<tr><td>Supervisor '+r.supHrs.toFixed(1)+' hrs @ $'+r.supWage.toFixed(2)+' +'+(BURDEN*100)+'% burden</td><td>'+money(r.supCost)+'</td></tr>':'')
-      +r.chems.map(c=>'<tr><td>'+c.label+(c.gal?' ('+c.gal+' gal)':'')+'</td><td>'+money(c.cost)+'</td></tr>').join('')
+      h+='<table class="p-table"><tr><th>Line</th><th>Amount</th></tr>'
+      +'<tr><td>Crew hours: '+r.manHrs.toFixed(1)+' man-hrs, '+r.crew+' crew x '+r.clockHrs.toFixed(1)+' hrs on site</td><td></td></tr>'
+      +'<tr><td>Techs '+r.techHrs.toFixed(1)+' hrs @ $'+r.wage.toFixed(2)+' +'+(BURDEN*100)+'% burden</td><td>'+money(r.techLabor)+'</td></tr>'
+      +(r.supN?'<tr><td>Working supervisor '+r.supHrs.toFixed(1)+' hrs @ $'+r.supWage.toFixed(2)+' +'+(BURDEN*100)+'% burden</td><td>'+money(r.supCost)+'</td></tr>':'')
+      +r.crewSup.map(c=>'<tr><td>'+c.name+' +'+(VENDOR_CHEM_MARKUP*100)+'%</td><td>'+money(c.cost*(1+VENDOR_CHEM_MARKUP))+'</td></tr>').join('')
       +'<tr><td>Equipment fee</td><td>'+money(r.equipCost)+'</td></tr>'
-      +'<tr><td><b>Crew company total (incl '+(SUB_PROFIT*100)+'% profit)</b></td><td><b>'+money(r.vendorCost)+'</b></td></tr>'
-      +(r.cwChems?'<tr><td>City Wide supplied chemicals</td><td>'+money(r.cwChems)+'</td></tr>':'')
-      +'<tr><td><b>Margin '+r.margin+'% | Regional x'+region.mult.toFixed(2)+' | '+money2(r.finalPrice/r.sf)+'/SF (market '+money2(r.mktLow)+'-'+money2(r.mktHigh)+')</b></td><td><b>'+money(r.finalPrice)+'</b></td></tr></table>';
+      +'<tr><td><b>Vendor pay (incl '+(SUB_PROFIT*100)+'% crew profit)</b></td><td><b>'+money(r.vendorCost)+'</b></td></tr>'
+      +r.staples.map(l=>'<tr><td>Staples '+l.item+' | '+l.name+' ('+l.use+')</td><td>'+money(l.cost)+'</td></tr>').join('')
+      +(r.cwSupply?'<tr><td>Supplies billed at '+SUPPLY_MARGIN+'% margin</td><td>'+money(r.supplySell)+'</td></tr>':'')
+      +'<tr><td>Cost build-up @ '+r.margin+'% minimum margin</td><td>'+money(r.costPlus)+'</td></tr>'
+      +'<tr><td>Market rate '+money2(r.mktRate)+'/SF</td><td>'+money(r.marketPrice)+'</td></tr>'
+      +'<tr><td><b>Client price ('+(r.basis==='market'?'market rate':r.basis==='build'?'cost build-up':'manual override')+') | '+money2(r.finalPrice/r.sf)+'/SF | City Wide margin '+((r.finalPrice-r.totalCost)/r.finalPrice*100).toFixed(0)+'%</b></td><td><b>'+money(r.finalPrice)+'</b></td></tr></table>';
     }
     h+='</div>';
   });
   if(internal){
-    const agg={};results.forEach(r=>{(r.chems||[]).forEach(c=>{if(!agg[c.prod])agg[c.prod]={prod:c.prod,gal:0,packGal:c.packGal,packLabel:c.packLabel,packPrice:c.packPrice,consumable:c.buy===0,cost:0};agg[c.prod].gal+=c.gal;agg[c.prod].cost+=c.cost;});});
-    const items=Object.values(agg);
-    if(items.length){h+='<div class="p-svc"><h4>Chemical Shopping List (verify current pricing at Brady / Staples Advantage)</h4><table class="p-table"><tr><th>Product</th><th>Needed</th><th>Buy</th><th>Unit Price</th><th>Purchase Total</th></tr>'
-      +items.map(it=>{if(it.consumable)return '<tr><td>'+it.prod+'</td><td>allowance</td><td>as needed</td><td></td><td>'+money(it.cost)+'</td></tr>';const buy=Math.max(1,Math.ceil(it.gal/(it.packGal||1)));return '<tr><td>'+it.prod+'</td><td>'+it.gal.toFixed(1)+' gal</td><td>'+buy+' x '+it.packLabel+'</td><td>'+money2(it.packPrice)+'</td><td>'+money(buy*it.packPrice)+'</td></tr>';}).join('')
+    const {items,crew}=aggregateSupplies(results);
+    if(items.length||crew.length){h+='<div class="p-svc"><h4>Supply Order: Staples Advantage City Wide Value Items</h4><table class="p-table"><tr><th>Staples Item #</th><th>Item</th><th>Pack</th><th>CW Price</th><th>Used</th><th>Buy</th><th>Order Total</th></tr>'
+      +items.map(it=>'<tr><td>'+it.item+'</td><td>'+it.name+'</td><td>'+it.pack+'</td><td>'+money2(it.price)+'</td><td>'+it.use+'</td><td>'+it.buy+'</td><td>'+money(it.buy*it.price)+'</td></tr>').join('')
+      +crew.map(c=>'<tr><td>Crew</td><td>'+c.name+'</td><td></td><td></td><td>allowance</td><td></td><td>'+money(c.cost)+'</td></tr>').join('')
       +'</table></div>';}
   }
   h+='<div class="p-total"><span>Total Investment'+(results.some(r=>r.events>1)?' (per event basis)':'')+'</span><span>'+money(total)+'</span></div>';
   if(internal&&$('minOverride').checked)h+='<div class="p-note"><b>Minimum override active.</b> Reason: '+($('minReason').value||'not stated')+'</div>';
   h+='<div class="p-note">'+(internal
-    ?'Internal document. Crew company profit held at '+(SUB_PROFIT*100)+'% after expenses. Chemicals '+($('chemProvider').value==='cw'?'provided by City Wide at contract cost.':'provided by the crew (cost +15% in build-up).')+' Prepared by '+($('prepBy').value||S.user||'')+'.'
-    :'City Wide Facility Solutions manages your complete scope of work with dedicated crews, commercial equipment, and professional-grade finish systems. Pricing reflects the full process: preparation, application, cure protection, and quality inspection. GoCityWide.com')+'</div>';
+    ?'Internal document. Crew company profit held at '+(SUB_PROFIT*100)+'% after expenses. Supplies '+($('chemProvider').value==='cw'?'provided by City Wide from Staples Advantage and billed at margin.':'provided by the crew (cost +15% inside vendor pay).')+' Prepared by '+($('prepBy').value||S.user||'')+'.'
+    :'Your Facility Solutions Manager will coordinate the full scope of work with commercial equipment and professional-grade finish systems. Pricing reflects the full process: preparation, application, cure protection, and quality inspection. Pricing does not include tax. GoCityWide.com')+'</div>';
   $('printArea').innerHTML=h;
   window.print();
 }
@@ -788,10 +870,10 @@ function copyQuote(){
 }
 
 /* ---------- SAVED WORK (local + cloud) ---------- */
-function snapshot(){return {acct:$('acct').value,qdate:$('qdate').value,prepBy:$('prepBy').value,region:$('region').value,brand:$('brand').value,chemProvider:$('chemProvider').value,laborBy:$('laborBy').value,ovMargin:$('ovMargin').value,minOverride:$('minOverride').checked,minReason:$('minReason').value,svcOn:S.svcOn,inputs:S.inputs};}
+function snapshot(){return {acct:$('acct').value,qdate:$('qdate').value,prepBy:$('prepBy').value,region:$('region').value,brand:$('brand').value,furniture:$('furniture').value,chemProvider:$('chemProvider').value,laborBy:$('laborBy').value,ovMargin:$('ovMargin').value,minOverride:$('minOverride').checked,minReason:$('minReason').value,svcOn:S.svcOn,inputs:S.inputs};}
 function applySnapshot(p){
   $('acct').value=p.acct||'';$('qdate').value=p.qdate||'';$('prepBy').value=p.prepBy||'';
-  $('region').value=p.region||'lv';$('brand').value=p.brand||'diversey';$('chemProvider').value=p.chemProvider||'cw';
+  $('region').value=p.region||'lv';$('brand').value=BRANDS[p.brand]?p.brand:'diversey';$('furniture').value=p.furniture||'light';$('chemProvider').value=p.chemProvider||'cw';if(p.laborBy)$('laborBy').value=p.laborBy;
   $('ovMargin').value=p.ovMargin||'';$('minOverride').checked=!!p.minOverride;$('minReason').value=p.minReason||'';
   S.svcOn=p.svcOn||{};S.inputs=p.inputs||{};recalc();
 }
